@@ -1,0 +1,63 @@
+name: AmllyEdit Pad - Otomatik APK Uretici
+
+on:
+  push:
+    branches: [ "main", "master", "ana" ]
+  workflow_dispatch:
+
+jobs:
+  build_apk:
+    name: Bulutta Tablet APK Uret
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Kodlari Bulut Bilgisayara Cek
+        uses: actions/checkout@v4
+
+      - name: 2. Java 17 Kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 3. Flutter SDK Kur
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+
+      - name: 4. Daginik Dosyalari Otomatik Klasorlerine Yerlestir ve Iskeleti Kur
+        run: |
+          mkdir -p temp_save/lib/services temp_save/lib/modules
+          cp pubspec.yaml temp_save/ || true
+          cp AndroidManifest.xml temp_save/ || true
+          cp main.dart temp_save/lib/ || true
+          cp zero_loss_cloud_service.dart temp_save/lib/services/ || true
+          cp anti_lag_proxy_thermal_engine.dart temp_save/lib/services/ || true
+          cp ai_post_production_engine.dart temp_save/lib/modules/ || true
+          cp premiere_capcut_timeline_engine.dart temp_save/lib/modules/ || true
+          cp export_render_queue_engine.dart temp_save/lib/modules/ || true
+
+          flutter create --org com.amllystudio --project-name amlly_edit_pad .
+
+          cp temp_save/pubspec.yaml pubspec.yaml || true
+          cp -r temp_save/lib/* lib/ || true
+          if [ -f temp_save/AndroidManifest.xml ]; then
+            cp temp_save/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          fi
+
+          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 24/g' android/app/build.gradle || true
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/g' android/app/build.gradle || true
+          sed -i 's/minSdk flutter.minSdkVersion/minSdk 24/g' android/app/build.gradle || true
+
+      - name: 5. Paketleri Indir
+        run: flutter pub get
+
+      - name: 6. APK Dosyasini Derle
+        run: flutter build apk --release --no-tree-shake-icons
+
+      - name: 7. Hazir APK Dosyasini Indirme Paketine Yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: AmllyEdit_Pad_Hazir_APK
+          path: build/app/outputs/flutter-apk/app-release.apk
