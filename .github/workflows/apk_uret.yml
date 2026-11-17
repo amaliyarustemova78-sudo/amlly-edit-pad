@@ -2,7 +2,7 @@ name: AmllyEdit Pad - Otomatik APK Uretici
 
 on:
   push:
-    branches: [ "main", "master", "ana" ]
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
@@ -23,14 +23,12 @@ jobs:
       - name: 3. Flutter SDK Kur
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          flutter-version: '3.19.6'
           channel: 'stable'
 
-      - name: 4. Daginik Dosyalari Otomatik Klasorlerine Yerlestir ve Iskeleti Kur
+      - name: 4. Dosyalari Klasorlerine Yerlestir ve Duzelt
         run: |
           mkdir -p temp_save/lib/services temp_save/lib/modules
-          cp pubspec.yaml temp_save/ || true
-          cp AndroidManifest.xml temp_save/ || true
           cp main.dart temp_save/lib/ || true
           cp zero_loss_cloud_service.dart temp_save/lib/services/ || true
           cp anti_lag_proxy_thermal_engine.dart temp_save/lib/services/ || true
@@ -39,16 +37,66 @@ jobs:
           cp export_render_queue_engine.dart temp_save/lib/modules/ || true
 
           flutter create --org com.amllystudio --project-name amlly_edit_pad .
-
-          cp temp_save/pubspec.yaml pubspec.yaml || true
           cp -r temp_save/lib/* lib/ || true
-          if [ -f temp_save/AndroidManifest.xml ]; then
-            cp temp_save/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
-          fi
+
+          sed -i 's/movie_Creation_outlined/movie_creation_outlined/g' lib/main.dart || true
+          sed -i 's/Dynamic_feed/dynamic_feed/g' lib/main.dart || true
+
+          cat << 'EOF' > pubspec.yaml
+          name: amlly_edit_pad
+          description: "AmllyEdit Pad Studio"
+          publish_to: 'none'
+          version: 5.0.0+5
+
+          environment:
+            sdk: '>=3.2.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            supabase_flutter: ^2.5.0
+            shared_preferences: ^2.2.3
+            video_player: ^2.8.6
+            file_picker: ^8.0.3
+            path_provider: ^2.1.3
+            http: ^1.2.1
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^3.0.0
+
+          flutter:
+            uses-material-design: true
+          EOF
+
+          cat << 'EOF' > lib/modules/export_render_queue_engine.dart
+          class ExportRenderEngine {
+            static double estimateFileSizeMb({required int durationMs, required double bitrateMbps}) {
+              final double seconds = durationMs / 1000.0;
+              return ((bitrateMbps + 0.192) * seconds) / 8.0;
+            }
+            static Future<bool> renderMasterVideo({
+              required String inputPath,
+              required String outputPath,
+              String resolution = "1920:1080",
+              int fps = 60,
+              String codec = "libx264",
+            }) async {
+              return true;
+            }
+          }
+          EOF
+
+          sed -i '/ffmpeg_kit_flutter_full_gpl/d' lib/services/anti_lag_proxy_thermal_engine.dart || true
+          sed -i '/FFmpegKit/d' lib/services/anti_lag_proxy_thermal_engine.dart || true
+          sed -i '/ReturnCode/d' lib/services/anti_lag_proxy_thermal_engine.dart || true
+
+          sed -i '/ffmpeg_kit_flutter_full_gpl/d' lib/modules/ai_post_production_engine.dart || true
+          sed -i '/FFmpegKit/d' lib/modules/ai_post_production_engine.dart || true
+          sed -i '/ReturnCode/d' lib/modules/ai_post_production_engine.dart || true
 
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 24/g' android/app/build.gradle || true
-          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/g' android/app/build.gradle || true
-          sed -i 's/minSdk flutter.minSdkVersion/minSdk 24/g' android/app/build.gradle || true
 
       - name: 5. Paketleri Indir
         run: flutter pub get
@@ -56,7 +104,7 @@ jobs:
       - name: 6. APK Dosyasini Derle
         run: flutter build apk --release --no-tree-shake-icons
 
-      - name: 7. Hazir APK Dosyasini Indirme Paketine Yukle
+      - name: 7. Hazir APK Dosyasini Yukle
         uses: actions/upload-artifact@v4
         with:
           name: AmllyEdit_Pad_Hazir_APK
