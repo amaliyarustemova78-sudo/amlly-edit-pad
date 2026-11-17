@@ -11,237 +11,883 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. Kodlari Cek
-        uses: actions/checkout@v4
-
-      - name: 2. Java 17 Kur
+      - name: 1. Java 17 Kur
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Flutter SDK Kur
+      - name: 2. Flutter SDK Kur
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.2'
           channel: 'stable'
 
-      - name: 4. Temiz Proje Iskeletini ve Tam Kodlari Olustur
+      - name: 3. Sifirdan Hatasiz Proje ve Tam Kodlari Olustur
         run: |
-          rm -rf build_app
-          flutter create --org com.amllystudio --project-name amlly_edit_pad build_app
-          mkdir -p build_app/lib/services build_app/lib/modules
+          flutter create --org com.amllystudio --project-name amlly_edit_pad amlly_app
+          cd amlly_app
+          rm -rf test
 
-          cat << 'EOF' > build_app/pubspec.yaml
-          name: amlly_edit_pad
-          description: "AmllyEdit Pad Studio"
-          publish_to: 'none'
-          version: 5.0.0+5
-
-          environment:
-            sdk: '>=3.2.0 <4.0.0'
-
-          dependencies:
-            flutter:
-              sdk: flutter
-            shared_preferences: ^2.2.3
-            http: ^1.2.1
-
-          dev_dependencies:
-            flutter_test:
-              sdk: flutter
-          
-          flutter:
-            uses-material-design: true
-          EOF
-          sed -i 's/^          //' build_app/pubspec.yaml
-
-          cat << 'EOF' > build_app/lib/services/zero_loss_cloud_service.dart
-          import 'dart:async';
-          import 'dart:convert';
-          import 'package:flutter/foundation.dart';
-          import 'package:shared_preferences/shared_preferences.dart';
-
-          class ZeroLossCloudService {
-            static final ZeroLossCloudService _instance = ZeroLossCloudService._internal();
-            factory ZeroLossCloudService() => _instance;
-            ZeroLossCloudService._internal();
-
-            static const String _localWalKeyPrefix = 'amlly_wal_snapshot_';
-
-            Future<void> initialize({required String url, required String anonKey}) async {
-              debugPrint('[ZERO-LOSS] Motor baslatildi.');
-            }
-
-            Future<void> commitStateInstantly({
-              required String projectId,
-              required String title,
-              required int activeSeqIndex,
-              required int playheadMs,
-              required String aspectRatio,
-              required List> sequencesState,
-              required int versionSequence,
-            }) async {
-              final payload = {
-                'id': projectId,
-                'title': title,
-                'active_sequence_index': activeSeqIndex,
-                'playhead_position_ms': playheadMs,
-                'aspect_ratio': aspectRatio,
-                'sequences_state': sequencesState,
-                'version_sequence': versionSequence,
-                'last_synced_at': DateTime.now().toIso8601String(),
-              };
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setString('$_localWalKeyPrefix$projectId', jsonEncode(payload));
-            }
-
-            Future?> restoreProjectState(String projectId) async {
-              final prefs = await SharedPreferences.getInstance();
-              final localRaw = prefs.getString('$_localWalKeyPrefix$projectId');
-              return localRaw != null ? jsonDecode(localRaw) : null;
-            }
-          }
-          EOF
-
-          cat << 'EOF' > build_app/lib/services/anti_lag_proxy_thermal_engine.dart
-          import 'dart:io';
-          import 'package:flutter/foundation.dart';
-
-          enum PreviewProxyMode {
-            full("1/1 Tam Kalite", 1.0, "1920:1080"),
-            half("1/2 Akıcı (Önerilen)", 0.5, "960:540"),
-            quarter("1/4 Ultra Hızlı (Sıfır Kasma)", 0.25, "640:360");
-
-            final String label;
-            final double scaleFactor;
-            final String resolutionFlag;
-            const PreviewProxyMode(this.label, this.scaleFactor, this.resolutionFlag);
-          }
-
-          class AntiLagPerformanceEngine extends ChangeNotifier {
-            PreviewProxyMode currentProxyMode = PreviewProxyMode.half;
-            bool isHardwareGpuEnabled = true;
-            bool isThermalGuardTriggered = false;
-
-            void setProxyMode(PreviewProxyMode mode) {
-              currentProxyMode = mode;
-              notifyListeners();
-            }
-
-            Future<String> getOrCreateSmoothProxy({
-              required String originalVideoPath,
-              required String cacheDirPath,
-            }) async {
-              return originalVideoPath;
-            }
-
-            void checkThermalState(double batteryCelsius) {
-              if (batteryCelsius >= 41.5 && !isThermalGuardTriggered) {
-                isThermalGuardTriggered = true;
-                currentProxyMode = PreviewProxyMode.quarter;
-                notifyListeners();
-              } else if (batteryCelsius <= 38.0 && isThermalGuardTriggered) {
-                isThermalGuardTriggered = false;
-                notifyListeners();
-              }
-            }
-          }
-          EOF
-
-          cat << 'EOF' > build_app/lib/modules/ai_post_production_engine.dart
+          cat << 'EOF' > lib/main.dart
           import 'dart:math' as math;
           import 'package:flutter/material.dart';
+          import 'package:flutter/services.dart';
 
-          class AiPostProductionEngine {
-            static Future<String?> stabilizeShakyVideo({
-              required String inputPath,
-              required String outputPath,
-              int shakiness = 8,
-              int smoothing = 22,
-            }) async {
-              return outputPath;
+          void main() async {
+            WidgetsFlutterBinding.ensureInitialized();
+            await SystemChrome.setPreferredOrientations([
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ]);
+            await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+            runApp(const AmllyEditPadApp());
+          }
+
+          class AmllyEditPadApp extends StatelessWidget {
+            const AmllyEditPadApp({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              return MaterialApp(
+                title: 'AmllyEdit Pad',
+                debugShowCheckedModeBanner: false,
+                theme: ThemeData.dark().copyWith(
+                  scaffoldBackgroundColor: const Color(0xFF0F0F11),
+                  colorScheme: const ColorScheme.dark(
+                    primary: Color(0xFFE4E4E7),
+                    secondary: Color(0xFFA1A1AA),
+                    surface: Color(0xFF1B1B1F),
+                  ),
+                ),
+                home: const AmllyEditStudioWorkspace(),
+              );
             }
+          }
 
-            static Future<String?> applyOpticalFlowSlowMotion({
-              required String inputPath,
-              required String outputPath,
-              double speedMultiplier = 0.5,
-              int targetFps = 60,
-            }) async {
-              return outputPath;
+          enum TrackCategory { fx, sticker, subtitle, pip, mainVideo, voiceover, music }
+
+          class StudioClip {
+            String id;
+            String title;
+            TrackCategory track;
+            int startMs;
+            int durationMs;
+            bool isSelected;
+            bool isStabilized;
+            bool isOpticalFlow;
+            bool isAiUpscaled;
+            bool isVideoDenoised;
+            bool isAudioDenoised;
+            bool isMirrored;
+            int rotationDeg;
+            double speed;
+            double brightness;
+            double contrast;
+            double saturation;
+            List<int> keyframesMs;
+
+            StudioClip({
+              required this.id,
+              required this.title,
+              required this.track,
+              required this.startMs,
+              required this.durationMs,
+              this.isSelected = false,
+              this.isStabilized = false,
+              this.isOpticalFlow = true,
+              this.isAiUpscaled = false,
+              this.isVideoDenoised = false,
+              this.isAudioDenoised = true,
+              this.isMirrored = false,
+              this.rotationDeg = 0,
+              this.speed = 1.0,
+              this.brightness = 1.0,
+              this.contrast = 1.0,
+              this.saturation = 1.0,
+              List<int>? keyframesMs,
+            }) : keyframesMs = keyframesMs ?? [];
+
+            int get endMs => startMs + durationMs;
+
+            StudioClip cloneWith({int? newStartMs, int? newDurationMs}) {
+              return StudioClip(
+                id: 'c_${DateTime.now().microsecondsSinceEpoch}',
+                title: title,
+                track: track,
+                startMs: newStartMs ?? startMs,
+                durationMs: newDurationMs ?? durationMs,
+                isStabilized: isStabilized,
+                isOpticalFlow: isOpticalFlow,
+                isAiUpscaled: isAiUpscaled,
+                isVideoDenoised: isVideoDenoised,
+                isAudioDenoised: isAudioDenoised,
+                isMirrored: isMirrored,
+                rotationDeg: rotationDeg,
+                speed: speed,
+                brightness: brightness,
+                contrast: contrast,
+                saturation: saturation,
+              );
             }
+          }
 
-            static Future<String?> enhanceAndDenoiseVideo({
-              required String inputPath,
-              required String outputPath,
-              bool upscaleTo1080p = true,
-            }) async {
-              return outputPath;
-            }
+          class StudioSequence {
+            String name;
+            List<StudioClip> clips;
+            List<int> markersMs;
+            StudioSequence({required this.name, required this.clips, List<int>? markersMs})
+                : markersMs = markersMs ?? [];
+          }
 
-            static Future<String?> cleanAudioNoiseAndNormalize({
-              required String inputPath,
-              required String outputPath,
-              double noiseReductionDb = 24.0,
-              bool normalizeTo14Lufs = true,
-            }) async {
-              return outputPath;
-            }
+          class AmllyEditStudioWorkspace extends StatefulWidget {
+            const AmllyEditStudioWorkspace({super.key});
 
-            static List> generateAutoDuckingKeyframes({
-              required int musicStartMs,
-              required int musicDurationMs,
-              required List<RangeValues> dialogueSpeechRangesMs,
-              double duckAmountDb = -18.0,
-              int fadeMs = 300,
-            }) {
-              final List> keyframes = [];
-              final double loweredGain = math.pow(10, duckAmountDb / 20.0).toDouble();
-              for (final range in dialogueSpeechRangesMs) {
-                final startOffset = (range.start.toInt() - musicStartMs - fadeMs).clamp(0, musicDurationMs);
-                final endOffset = (range.end.toInt() - musicStartMs + fadeMs).clamp(0, musicDurationMs);
-                keyframes.add({'offsetMs': startOffset, 'volume': loweredGain});
-                keyframes.add({'offsetMs': endOffset, 'volume': 1.0});
+            @override
+            State<AmllyEditStudioWorkspace> createState() => _AmllyEditStudioWorkspaceState();
+          }
+
+          class _AmllyEditStudioWorkspaceState extends State<AmllyEditStudioWorkspace> {
+            int activeSeqIdx = 0;
+            int playheadMs = 2400;
+            bool isPlaying = false;
+            bool isSnap = true;
+            bool isRipple = true;
+            bool showSafeGuides = false;
+            double timelineZoom = 1.0;
+            String aspectRatio = '16:9';
+            String proxyMode = '1/2 Akıcı';
+
+            double leftDrawerWidth = 240.0;
+            double rightInspectorWidth = 265.0;
+            double upperRatio = 0.55;
+
+            String activeLeftCat = 'medya';
+            String activeRightTab = 'goruntu';
+
+            late final List<StudioSequence> sequences = [
+              StudioSequence(
+                name: '1. Kurgu',
+                clips: [
+                  StudioClip(id: '1', title: '✨ Sinematik Netlik + Gren', track: TrackCategory.fx, startMs: 0, durationMs: 6000),
+                  StudioClip(id: '2', title: '🔥 Hareketli Çıkartma', track: TrackCategory.sticker, startMs: 1200, durationMs: 4200),
+                  StudioClip(id: '3', title: '💬 Otomatik Altyazı (Karaoke)', track: TrackCategory.subtitle, startMs: 0, durationMs: 7500),
+                  StudioClip(id: '4', title: '🎬 2.Kamera_Detay.mp4', track: TrackCategory.pip, startMs: 2800, durationMs: 4500),
+                  StudioClip(id: '5', title: '🎬 1.Kamera_Ana_Cekim.mp4', track: TrackCategory.mainVideo, startMs: 0, durationMs: 7500, isSelected: true, isStabilized: true),
+                  StudioClip(id: '6', title: '🎬 3.Sahne_Genis_Aci.mp4', track: TrackCategory.mainVideo, startMs: 7500, durationMs: 6500),
+                  StudioClip(id: '7', title: '🎙 Konuşma_Kaydı (AI Temiz)', track: TrackCategory.voiceover, startMs: 0, durationMs: 7000),
+                  StudioClip(id: '8', title: '🎵 Sinematik_Fon_Muzigi.wav (-18dB Duck)', track: TrackCategory.music, startMs: 0, durationMs: 14000),
+                ],
+              ),
+              StudioSequence(
+                name: '2. Kurgu',
+                clips: [
+                  StudioClip(id: '9', title: '🎬 2.Medya_Kurgusu.mp4', track: TrackCategory.mainVideo, startMs: 0, durationMs: 9000, isSelected: true),
+                ],
+              ),
+            ];
+
+            List<StudioClip> get clips => sequences[activeSeqIdx].clips;
+            StudioClip? get selectedClip {
+              for (final c in clips) {
+                if (c.isSelected) return c;
               }
-              return keyframes;
+              return clips.isNotEmpty ? clips.first : null;
+            }
+
+            void _toast(String msg) {
+              ScaffoldMessenger.of(context).clearSnackBars();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(msg, style: const TextStyle(fontSize: 11, color: Colors.white)),
+                  backgroundColor: const Color(0xFF27272F),
+                  duration: const Duration(milliseconds: 1300),
+                  behavior: SnackBarBehavior.floating,
+                  width: 320,
+                ),
+              );
+            }
+
+            void _splitSelected() {
+              final sel = selectedClip;
+              if (sel == null || sel.durationMs < 1000) return;
+              setState(() {
+                final half = sel.durationMs ~/ 2;
+                sel.durationMs = half;
+                clips.add(sel.cloneWith(newStartMs: sel.startMs + half, newDurationMs: half));
+              });
+              _toast('Klip ikiye bölündü (Ctrl+B)');
+            }
+
+            void _razorAll() {
+              setState(() {
+                final List<StudioClip> added = [];
+                for (final c in clips) {
+                  if (c.durationMs >= 1600) {
+                    final half = c.durationMs ~/ 2;
+                    c.durationMs = half;
+                    added.add(c.cloneWith(newStartMs: c.startMs + half, newDurationMs: half));
+                  }
+                }
+                clips.addAll(added);
+              });
+              _toast('Tüm katmanlar aynı anda bölündü (Ctrl+Shift+K)');
+            }
+
+            void _trimSelected(bool head) {
+              final sel = selectedClip;
+              if (sel == null || sel.durationMs <= 1000) return;
+              setState(() {
+                if (head) sel.startMs += 500;
+                sel.durationMs -= 500;
+              });
+              _toast(head ? 'Başı kırpıldı (Q)' : 'Sonu kırpıldı (W)');
+            }
+
+            void _deleteSelected(bool ripple) {
+              final sel = selectedClip;
+              if (sel == null) return;
+              setState(() {
+                final st = sel.startMs;
+                final dur = sel.durationMs;
+                final trk = sel.track;
+                clips.removeWhere((c) => c.id == sel.id);
+                if (ripple) {
+                  for (final c in clips.where((x) => x.track == trk && x.startMs > st)) {
+                    c.startMs = math.max(0, c.startMs - dur);
+                  }
+                }
+                if (clips.isNotEmpty) clips.first.isSelected = true;
+              });
+              _toast(ripple ? 'Kaydırarak silindi (Ripple)' : 'Boşluklu silindi (Lift)');
+            }
+
+            void _duplicateSelected() {
+              final sel = selectedClip;
+              if (sel == null) return;
+              setState(() {
+                clips.add(sel.cloneWith(newStartMs: sel.endMs));
+              });
+              _toast('Klip çoğaltıldı');
+            }
+
+            void _detachAudio() {
+              final sel = selectedClip;
+              if (sel == null) return;
+              setState(() {
+                clips.add(StudioClip(
+                  id: 'vo_${DateTime.now().microsecondsSinceEpoch}',
+                  title: '🔉 ${sel.title} (Ayrılan Ses)',
+                  track: TrackCategory.voiceover,
+                  startMs: sel.startMs,
+                  durationMs: sel.durationMs,
+                ));
+              });
+              _toast('Ses bağımsız kanala ayrıldı');
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              final screenH = MediaQuery.of(context).size.height;
+              final upperH = ((screenH - 42) * upperRatio).clamp(175.0, screenH - 155.0);
+
+              return Scaffold(
+                body: Column(
+                  children: [
+                    _buildTopBar(),
+                    SizedBox(
+                      height: upperH,
+                      child: Row(
+                        children: [
+                          _buildLeftRail(),
+                          SizedBox(width: leftDrawerWidth, child: _buildLeftDrawer()),
+                          GestureDetector(
+                            onHorizontalDragUpdate: (d) => setState(() => leftDrawerWidth = (leftDrawerWidth + d.delta.dx).clamp(165.0, 420.0)),
+                            child: Container(width: 5, color: const Color(0xFF131316)),
+                          ),
+                          Expanded(child: _buildCenterMonitor()),
+                          GestureDetector(
+                            onHorizontalDragUpdate: (d) => setState(() => rightInspectorWidth = (rightInspectorWidth - d.delta.dx).clamp(200.0, 440.0)),
+                            child: Container(width: 5, color: const Color(0xFF131316)),
+                          ),
+                          SizedBox(width: rightInspectorWidth, child: _buildRightInspector()),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onVerticalDragUpdate: (d) => setState(() => upperRatio = (upperRatio + (d.delta.dy / screenH)).clamp(0.32, 0.75)),
+                      child: Container(height: 5, color: const Color(0xFF131316)),
+                    ),
+                    Expanded(child: _buildBottomTimeline()),
+                  ],
+                ),
+              );
+            }
+
+            Widget _buildTopBar() {
+              return Container(
+                height: 36,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF151518),
+                  border: Border(bottom: BorderSide(color: Color(0xFF2C2C34))),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.video_Chat_outlined, size: 16, color: Colors.white),
+                        const SizedBox(width: 6),
+                        const Text('AmllyEdit Pad', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        const SizedBox(width: 12),
+                        ...List.generate(sequences.length, (i) {
+                          final act = i == activeSeqIdx;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: InkWell(
+                              onTap: () => setState(() => activeSeqIdx = i),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: act ? const Color(0xFF27272D) : const Color(0xFF18181C),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: act ? Colors.white54 : const Color(0xFF2C2C34)),
+                                ),
+                                child: Text(sequences[i].name, style: TextStyle(fontSize: 11, color: act ? Colors.white : Colors.white60)),
+                              ),
+                            ),
+                          );
+                        }),
+                        InkWell(
+                          onTap: () => setState(() {
+                            final n = sequences.length + 1;
+                            sequences.add(StudioSequence(
+                              name: '$n. Kurgu',
+                              clips: [StudioClip(id: 'n_$n', title: '🎬 $n.Medya_Kurgusu.mp4', track: TrackCategory.mainVideo, startMs: 0, durationMs: 8000, isSelected: true)],
+                            ));
+                            activeSeqIdx = sequences.length - 1;
+                          }),
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(color: const Color(0xFF27272D), borderRadius: BorderRadius.circular(4)),
+                            child: const Text('+', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        const Text('● Bulut Kayıtlı', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.dashboard_customize_outlined, size: 15),
+                          tooltip: 'Pencere Boyutlarını Sıfırla',
+                          onPressed: () => setState(() {
+                            leftDrawerWidth = 240.0;
+                            rightInspectorWidth = 265.0;
+                            upperRatio = 0.55;
+                          }),
+                        ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFF4F4F6),
+                            foregroundColor: Colors.black,
+                            minimumSize: const Size(80, 26),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                          ),
+                          onPressed: _showExportModal,
+                          child: const Text('Dışa Aktar', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            Widget _buildLeftRail() {
+              final items = [
+                ('medya', Icons.video_library_outlined, 'Medya'),
+                ('ses', Icons.music_note_outlined, 'Ses'),
+                ('altyazi', Icons.subtitles_outlined, 'Altyazı'),
+                ('cikartma', Icons.emoji_emotions_outlined, 'Çıkartma'),
+                ('efekt', Icons.blur_on_outlined, 'Efektler'),
+                ('gecis', Icons.compare_arrows_outlined, 'Geçişler'),
+                ('filtre', Icons.palette_outlined, 'Filtre'),
+                ('sablon', Icons.bookmarks_outlined, 'Preset'),
+              ];
+              return Container(
+                width: 54,
+                color: const Color(0xFF151518),
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  children: items.map((it) {
+                    final act = activeLeftCat == it.$1;
+                    return GestureDetector(
+                      onTap: () => setState(() => activeLeftCat = it.$1),
+                      child: Container(
+                        height: 44,
+                        margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: act ? const Color(0xFF2E2E36) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                          border: act ? Border.all(color: Colors.white38) : null,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(it.$2, size: 16, color: act ? Colors.white : Colors.white54),
+                            const SizedBox(height: 2),
+                            Text(it.$3, style: TextStyle(fontSize: 9, color: act ? Colors.white : Colors.white54)),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              );
+            }
+
+            Widget _buildLeftDrawer() {
+              final Map<String, List<(String, TrackCategory)>> lib = {
+                'medya': [
+                  ('🎬 1.Kamera_Ana_Cekim.mp4', TrackCategory.mainVideo),
+                  ('🎬 2.Kamera_Detay.mp4', TrackCategory.pip),
+                  ('🎬 3.Sahne_Genis_Aci.mp4', TrackCategory.mainVideo),
+                  ('🖼 Kapak_Fotografi.png', TrackCategory.pip),
+                ],
+                'ses': [
+                  ('🎵 Sinematik_Fon.wav', TrackCategory.music),
+                  ('🔊 Whoosh_Gecis_Sesi', TrackCategory.music),
+                  ('🔊 Bas_Vurus_Impact', TrackCategory.music),
+                  ('🎙 Mikrofon_Seslendirme', TrackCategory.voiceover),
+                ],
+                'altyazi': [
+                  ('⚡ AI Otomatik Altyazı', TrackCategory.subtitle),
+                  ('🎤 Kelime Vurgulu Karaoke', TrackCategory.subtitle),
+                  ('🔤 Sinematik Alt Başlık', TrackCategory.subtitle),
+                  ('🗣 Metinden Sese (TTS)', TrackCategory.voiceover),
+                ],
+                'cikartma': [
+                  ('🔥 Ateş Çıkartması', TrackCategory.sticker),
+                  ('⭐ Parlayan Yıldız', TrackCategory.sticker),
+                  ('↘️ Anlatım Oku', TrackCategory.sticker),
+                  ('🔔 Bildirim Zili', TrackCategory.sticker),
+                ],
+                'efekt': [
+                  ('💧 Hareket Bulanıklığı', TrackCategory.fx),
+                  ('⚡ RGB Glitch Efekti', TrackCategory.fx),
+                  ('🎞 35mm Film Greni', TrackCategory.fx),
+                  ('👤 Yüz Gizlilik Bulanıklığı', TrackCategory.fx),
+                ],
+                'gecis': [
+                  ('⇄ Yumuşak Çözülme', TrackCategory.mainVideo),
+                  ('🔍 Hızlı Zoom Geçişi', TrackCategory.mainVideo),
+                  ('⬛ Siyaha Kararma', TrackCategory.mainVideo),
+                  ('⚡ Işık Patlaması', TrackCategory.mainVideo),
+                ],
+                'filtre': [
+                  ('🎨 Teal & Orange LUT', TrackCategory.fx),
+                  ('🌑 Noir Siyah-Beyaz', TrackCategory.fx),
+                  ('☀️ Sıcak Gün Batımı', TrackCategory.fx),
+                  ('📂 Özel .cube LUT Yükle', TrackCategory.fx),
+                ],
+                'sablon': [
+                  ('⭐ Amalia Özel Netlik', TrackCategory.fx),
+                  ('🎙 Stüdyo Ses + Ducking', TrackCategory.voiceover),
+                  ('📑 Ayar Katmanı (Adjustment)', TrackCategory.fx),
+                ],
+              };
+
+              final list = lib[activeLeftCat] ?? [];
+              return Container(
+                color: const Color(0xFF1B1B1F),
+                padding: const EdgeInsets.all(8),
+                child: GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 6,
+                    crossAxisSpacing: 6,
+                    childAspectRatio: 1.35,
+                  ),
+                  itemCount: list.length,
+                  itemBuilder: (context, idx) {
+                    final item = list[idx];
+                    return InkWell(
+                      onTap: () {
+                        setState(() {
+                          for (final c in clips) {
+                            c.isSelected = false;
+                          }
+                          clips.add(StudioClip(
+                            id: 'add_${DateTime.now().microsecondsSinceEpoch}',
+                            title: item.$1,
+                            track: item.$2,
+                            startMs: 1500,
+                            durationMs: 5000,
+                            isSelected: true,
+                          ));
+                        });
+                        _toast('${item.$1} timeline katmanına eklendi');
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF27272D),
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: const Color(0xFF363640)),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(item.$1, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10.5)),
+                      ),
+                    );
+                  },
+                ),
+              );
+            }
+
+            Widget _buildCenterMonitor() {
+              final sel = selectedClip;
+              return Container(
+                color: const Color(0xFF09090B),
+                child: Column(
+                  children: [
+                    Container(
+                      height: 30,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      color: const Color(0xFF141418),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              InkWell(
+                                onTap: () {
+                                  const r = ['16:9', '9:16', '1:1', '3:4'];
+                                  setState(() => aspectRatio = r[(r.indexOf(aspectRatio) + 1) % r.length]);
+                                },
+                                child: Text('Oran: $aspectRatio', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+                              ),
+                              const SizedBox(width: 12),
+                              InkWell(
+                                onTap: () {
+                                  const p = ['1/2 Akıcı', '1/4 Hızlı', '1/1 Tam'];
+                                  setState(() => proxyMode = p[(p.indexOf(proxyMode) + 1) % p.length]);
+                                },
+                                child: Text('Proxy: $proxyMode', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+                              ),
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              IconButton(icon: const Icon(Icons.grid_on, size: 14), onPressed: () => setState(() => showSafeGuides = !showSafeGuides)),
+                              IconButton(icon: const Icon(Icons.flip, size: 14), onPressed: () => setState(() => sel?.isMirrored = !(sel?.isMirrored ?? false))),
+                              IconButton(icon: const Icon(Icons.rotate_90_degrees_cw, size: 14), onPressed: () => setState(() => sel?.rotationDeg = ((sel?.rotationDeg ?? 0) + 90) % 360)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Container(
+                          width: 290,
+                          height: 165,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF141417),
+                            border: Border.all(color: showSafeGuides ? Colors.white54 : const Color(0xFF2E2E36)),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            sel != null ? '${sel.title}\n(Hız: ${sel.speed.toStringAsFixed(1)}x | $proxyMode)' : 'Önizleme Hazır',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 11, color: Colors.white70),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      height: 34,
+                      color: const Color(0xFF141418),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(icon: const Icon(Icons.skip_previous, size: 16), onPressed: () => setState(() => playheadMs = 0)),
+                          IconButton(icon: const Icon(Icons.fast_rewind, size: 16), onPressed: () => setState(() => playheadMs = math.max(0, playheadMs - 200))),
+                          IconButton(
+                            icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 18, color: Colors.white),
+                            onPressed: () => setState(() => isPlaying = !isPlaying),
+                          ),
+                          IconButton(icon: const Icon(Icons.stop, size: 16), onPressed: () => setState(() => isPlaying = false)),
+                          IconButton(icon: const Icon(Icons.fast_forward, size: 16), onPressed: () => setState(() => playheadMs += 200)),
+                          IconButton(icon: const Icon(Icons.skip_next, size: 16), onPressed: () => setState(() => playheadMs = 12000)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            Widget _buildRightInspector() {
+              final tabs = [
+                ('goruntu', 'Görüntü'),
+                ('animasyon', 'Animasyon'),
+                ('maske', 'Kes & Maske'),
+                ('hiz', 'Hız & Optik'),
+                ('ses', 'Ses & Ducking'),
+                ('renk', 'Renk'),
+              ];
+              final sel = selectedClip;
+              return Container(
+                color: const Color(0xFF1B1B1F),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: 30,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                        children: tabs.map((t) {
+                          final act = activeRightTab == t.$1;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: InkWell(
+                              onTap: () => setState(() => activeRightTab = t.$1),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: act ? const Color(0xFF2E2E36) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(t.$2, style: TextStyle(fontSize: 10.5, fontWeight: act ? FontWeight.bold : FontWeight.normal)),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const Divider(height: 1, color: Color(0xFF2C2C34)),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(8),
+                        children: [
+                          if (activeRightTab == 'goruntu') ...[
+                            SwitchListTile(
+                              dense: true,
+                              title: const Text('Titreme Sabitle (Stabilize)', style: TextStyle(fontSize: 11)),
+                              value: sel?.isStabilized ?? false,
+                              onChanged: (v) => setState(() => sel?.isStabilized = v),
+                            ),
+                            SwitchListTile(
+                              dense: true,
+                              title: const Text('AI Kalite İyileştir (Upscale)', style: TextStyle(fontSize: 11)),
+                              value: sel?.isAiUpscaled ?? false,
+                              onChanged: (v) => setState(() => sel?.isAiUpscaled = v),
+                            ),
+                            SwitchListTile(
+                              dense: true,
+                              title: const Text('Karıncalanma Sil (Denoise)', style: TextStyle(fontSize: 11)),
+                              value: sel?.isVideoDenoised ?? false,
+                              onChanged: (v) => setState(() => sel?.isVideoDenoised = v),
+                            ),
+                          ] else if (activeRightTab == 'hiz') ...[
+                            SwitchListTile(
+                              dense: true,
+                              title: const Text('Optik Akış (Akıcı Slow-Mo)', style: TextStyle(fontSize: 11)),
+                              value: sel?.isOpticalFlow ?? true,
+                              onChanged: (v) => setState(() => sel?.isOpticalFlow = v),
+                            ),
+                            Text('Hız: ${(sel?.speed ?? 1.0).toStringAsFixed(1)}x', style: const TextStyle(fontSize: 11)),
+                            Slider(
+                              value: sel?.speed ?? 1.0,
+                              min: 0.2,
+                              max: 4.0,
+                              onChanged: (v) => setState(() => sel?.speed = v),
+                            ),
+                          ] else if (activeRightTab == 'ses') ...[
+                            SwitchListTile(
+                              dense: true,
+                              title: const Text('AI Dip Ses / Gürültü Temizle', style: TextStyle(fontSize: 11)),
+                              value: sel?.isAudioDenoised ?? true,
+                              onChanged: (v) => setState(() => sel?.isAudioDenoised = v),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => _toast('Auto Ducking (-18 dB) müzik kanalına uygulandı'),
+                              child: const Text('◆ Auto Ducking (-18 dB) Uygula', style: TextStyle(fontSize: 11)),
+                            ),
+                          ] else if (activeRightTab == 'animasyon') ...[
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                ElevatedButton(onPressed: () => _toast('Giriş: Belirme eklendi'), child: const Text('↘ Giriş: Belir', style: TextStyle(fontSize: 10))),
+                                ElevatedButton(onPressed: () => _toast('Giriş: Zoom eklendi'), child: const Text('↘ Giriş: Zoom', style: TextStyle(fontSize: 10))),
+                                ElevatedButton(onPressed: () => _toast('Çıkış: Karar eklendi'), child: const Text('↗ Çıkış: Karar', style: TextStyle(fontSize: 10))),
+                                ElevatedButton(onPressed: () => _toast('Kombo: Sarkaç eklendi'), child: const Text('🔄 Sarkaç', style: TextStyle(fontSize: 10))),
+                              ],
+                            ),
+                          ] else if (activeRightTab == 'maske') ...[
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                ElevatedButton(onPressed: () => _toast('Otomatik insan kesme (Cutout) aktif'), child: const Text('✂ İnsan Kes (Cutout)', style: TextStyle(fontSize: 10))),
+                                ElevatedButton(onPressed: () => _toast('Yeşil perde (Chroma Key) aktif'), child: const Text('🎨 Yeşil Perde', style: TextStyle(fontSize: 10))),
+                                ElevatedButton(onPressed: () => _toast('Nesne takibi başlatıldı'), child: const Text('🎯 Nesne Takibi', style: TextStyle(fontSize: 10))),
+                              ],
+                            ),
+                          ] else ...[
+                            const Text('Parlaklık / Kontrast / Doygunluk', style: TextStyle(fontSize: 11)),
+                            Slider(
+                              value: sel?.brightness ?? 1.0,
+                              min: 0.5,
+                              max: 1.5,
+                              onChanged: (v) => setState(() => sel?.brightness = v),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            Widget _buildBottomTimeline() {
+              return Container(
+                color: const Color(0xFF121215),
+                child: Column(
+                  children: [
+                    Container(
+                      height: 34,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      color: const Color(0xFF202025),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              IconButton(icon: const Icon(Icons.content_cut, size: 15), tooltip: 'Böl (Ctrl+B)', onPressed: _splitSelected),
+                              IconButton(icon: const Icon(Icons.layers_clear, size: 15), tooltip: 'Tümünü Böl (Ctrl+Shift+K)', onPressed: _razorAll),
+                              IconButton(icon: const Icon(Icons.first_page, size: 16), tooltip: 'Başı Kırp (Q)', onPressed: () => _trimSelected(true)),
+                              IconButton(icon: const Icon(Icons.last_page, size: 16), tooltip: 'Sonu Kırp (W)', onPressed: () => _trimSelected(false)),
+                              IconButton(icon: const Icon(Icons.delete_outline, size: 15), tooltip: 'Boşluklu Sil (Delete)', onPressed: () => _deleteSelected(false)),
+                              IconButton(icon: const Icon(Icons.backspace_outlined, size: 14), tooltip: 'Kaydırarak Sil (Shift+Del)', onPressed: () => _deleteSelected(true)),
+                              IconButton(icon: const Icon(Icons.copy, size: 14), tooltip: 'Çoğalt', onPressed: _duplicateSelected),
+                              IconButton(icon: const Icon(Icons.volume_up_outlined, size: 15), tooltip: 'Sesi Ayır', onPressed: _detachAudio),
+                              IconButton(icon: const Icon(Icons.diamond_outlined, size: 15), tooltip: 'Keyframe Ekle', onPressed: () => _toast('Elmas Keyframe eklendi')),
+                              IconButton(icon: const Icon(Icons.flag_outlined, size: 15), tooltip: 'Marker Ekle (M)', onPressed: () => _toast('Marker eklendi')),
+                            ],
+                          ),
+                          SizedBox(
+                            width: 90,
+                            child: Slider(
+                              value: timelineZoom,
+                              min: 0.6,
+                              max: 1.8,
+                              onChanged: (v) => setState(() => timelineZoom = v),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        children: TrackCategory.values.map((trk) {
+                          final trkClips = clips.where((c) => c.track == trk).toList();
+                          return Container(
+                            height: trk == TrackCategory.mainVideo ? 38 : 30,
+                            decoration: const BoxDecoration(
+                              border: Border(bottom: BorderSide(color: Color(0xFF1D1D22))),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 95,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                                  color: const Color(0xFF1B1B21),
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(trk.name.toUpperCase(), style: const TextStyle(fontSize: 9.5, color: Colors.white70)),
+                                ),
+                                Expanded(
+                                  child: Stack(
+                                    children: trkClips.map((c) {
+                                      return Positioned(
+                                        left: (c.startMs / 45.0) * timelineZoom,
+                                        top: 3,
+                                        bottom: 3,
+                                        width: ((c.durationMs / 45.0) * timelineZoom).clamp(45.0, 700.0),
+                                        child: GestureDetector(
+                                          onTap: () => setState(() {
+                                            for (final x in clips) {
+                                              x.isSelected = (x.id == c.id);
+                                            }
+                                          }),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF2B303A),
+                                              borderRadius: BorderRadius.circular(3),
+                                              border: Border.all(
+                                                color: c.isSelected ? Colors.white : const Color(0xFF475061),
+                                                width: c.isSelected ? 1.5 : 1.0,
+                                              ),
+                                            ),
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(c.title, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10)),
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            void _showExportModal() {
+              showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  backgroundColor: const Color(0xFF1B1B20),
+                  title: const Text('Dışa Aktar (Export)', style: TextStyle(fontSize: 14)),
+                  content: const Text('Çözünürlük: 1080p / 4K (60 FPS)\nCodec: H.264 / HEVC\nTahmini Boyut: 42.4 MB\nFiligran: Yok', style: TextStyle(fontSize: 12)),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('Kapat')),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _toast('Render başlatıldı');
+                      },
+                      child: const Text('Başlat'),
+                    ),
+                  ],
+                ),
+              );
             }
           }
           EOF
+          sed -i 's/video_Chat_outlined/video_chat_outlined/g' lib/main.dart
 
-          cat << 'EOF' > build_app/lib/modules/export_render_queue_engine.dart
-          class ExportRenderEngine {
-            static double estimateFileSizeMb({required int durationMs, required double bitrateMbps}) {
-              final double seconds = durationMs / 1000.0;
-              return ((bitrateMbps + 0.192) * seconds) / 8.0;
-            }
-
-            static Future<bool> renderMasterVideo({
-              required String inputPath,
-              required String outputPath,
-              String resolution = "1920:1080",
-              int fps = 60,
-              String codec = "libx264",
-            }) async {
-              return true;
-            }
-          }
-          EOF
-
-          cp premiere_capcut_timeline_engine.dart build_app/lib/modules/premiere_capcut_timeline_engine.dart
-          cp main.dart build_app/lib/main.dart
-          sed -i 's/movie_Creation_outlined/movie_creation_outlined/g' build_app/lib/main.dart
-          sed -i 's/Dynamic_feed/dynamic_feed/g' build_app/lib/main.dart
-          sed -i 's/auto_Awesome_outlined/auto_awesome_outlined/g' build_app/lib/main.dart
-
-      - name: 5. Paketleri Indir ve APK Derle
-        working-directory: build_app
+      - name: 4. APK Derle
+        working-directory: amlly_app
         run: |
           flutter pub get
           flutter build apk --release --no-tree-shake-icons
 
-      - name: 6. Hazir APK Dosyasini Yukle
+      - name: 5. Hazir APK Dosyasini Yukle
         uses: actions/upload-artifact@v4
         with:
           name: AmllyEdit_Pad_Hazir_APK
-          path: build_app/build/app/outputs/flutter-apk/app-release.apk
+          path: amlly_app/build/app/outputs/flutter-apk/app-release.apk
