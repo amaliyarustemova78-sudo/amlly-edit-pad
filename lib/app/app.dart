@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../state/workspace_controller.dart';
@@ -22,6 +23,19 @@ class AmllyEditApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      // Ok tuşları, Boşluk ve Enter odaktaki düğmeleri gezmesin/basmasın: kurgu kısayolları için ayrılmıştır.
+      shortcuts: {
+        ...WidgetsApp.defaultShortcuts,
+        const SingleActivator(LogicalKeyboardKey.arrowLeft): const DoNothingAndStopPropagationIntent(),
+        const SingleActivator(LogicalKeyboardKey.arrowRight): const DoNothingAndStopPropagationIntent(),
+        const SingleActivator(LogicalKeyboardKey.arrowUp): const DoNothingAndStopPropagationIntent(),
+        const SingleActivator(LogicalKeyboardKey.arrowDown): const DoNothingAndStopPropagationIntent(),
+        const SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true): const DoNothingAndStopPropagationIntent(),
+        const SingleActivator(LogicalKeyboardKey.arrowRight, shift: true): const DoNothingAndStopPropagationIntent(),
+        const SingleActivator(LogicalKeyboardKey.space): const DoNothingAndStopPropagationIntent(),
+        const SingleActivator(LogicalKeyboardKey.enter): const DoNothingAndStopPropagationIntent(),
+        const SingleActivator(LogicalKeyboardKey.numpadEnter): const DoNothingAndStopPropagationIntent(),
+      },
       home: const _Bootstrap(),
     );
   }

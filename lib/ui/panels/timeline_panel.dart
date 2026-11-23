@@ -23,7 +23,10 @@ class TimelinePanel extends StatefulWidget {
     required this.onAddSelected,
     required this.onSplit,
     required this.onDeleteClip,
+    required this.onDropMedia,
   });
+
+  final void Function(String assetId, int atMs) onDropMedia;
 
   final WorkspaceController controller;
   final PlaybackController playback;
@@ -38,6 +41,7 @@ class TimelinePanel extends StatefulWidget {
 class _TimelinePanelState extends State<TimelinePanel> {
   final ScrollController _scroll = ScrollController();
   double _viewport = 0;
+  final Map<int, GlobalKey> _laneKeys = {0: GlobalKey(), 1: GlobalKey()};
   double _dragDx = 0;
   int _dragOrigin = 0;
 
@@ -149,7 +153,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                                 const Padding(
                                   padding: EdgeInsets.only(left: 12, top: 10),
                                   child: Text(
-                                    'Havuzdaki bir dosyaya çift dokun ya da ⊕ ile ekle.',
+                                    'Havuzdan bir dosyayı basılı tutup buraya sürükle ya da dosyaya çift dokun.',
                                     style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
                                   ),
                                 ),
@@ -225,7 +229,16 @@ class _TimelinePanelState extends State<TimelinePanel> {
 
   Widget _lane(int track, double height, Color color) {
     final laneClips = c.clips.where((clip) => clip.track == track).toList();
-    return GestureDetector(
+    final key = _laneKeys[track]!;
+    return DragTarget<String>(
+      onAcceptWithDetails: (details) {
+        final box = key.currentContext?.findRenderObject() as RenderBox?;
+        if (box == null) return;
+        final local = box.globalToLocal(details.offset);
+        widget.onDropMedia(details.data, _msAt(local.dx - 60 < 0 ? 0 : local.dx - 60));
+      },
+      builder: (context, candidates, rejected) => GestureDetector(
+      key: key,
       behavior: HitTestBehavior.opaque,
       onTapUp: (d) {
         c.selectClip(null);
@@ -234,7 +247,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       child: Container(
         height: height,
         decoration: BoxDecoration(
-          color: color,
+          color: candidates.isNotEmpty ? Color.lerp(color, AppColors.accent, 0.25) : color,
           border: const Border(bottom: BorderSide(color: AppColors.border)),
         ),
         child: Stack(
@@ -249,6 +262,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
               ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -354,7 +368,7 @@ class RulerPainter extends CustomPainter {
       if (isMajor) {
         final tp = TextPainter(
           text: TextSpan(
-            text: minor < 1000 ? formatTimecode(ms).substring(3) : formatDuration(ms),
+            text: ms % 1000 == 0 ? formatDuration(ms) : '${formatDuration(ms)},${(ms % 1000) ~/ 100}',
             style: const TextStyle(fontSize: 9.5, color: AppColors.textSecondary),
           ),
           textDirection: TextDirection.ltr,

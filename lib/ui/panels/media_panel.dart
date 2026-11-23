@@ -127,6 +127,36 @@ class _MediaPanelState extends State<MediaPanel> {
     );
   }
 
+  /// Basılı tutup sürükleyerek zaman çizelgesine bırakma.
+  Widget _draggable(MediaAsset asset, Widget child) {
+    return LongPressDraggable<String>(
+      data: asset.id,
+      delay: const Duration(milliseconds: 280),
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      hapticFeedbackOnStart: true,
+      onDragStarted: () => c.select(asset.id),
+      feedback: Material(
+        color: Colors.transparent,
+        child: Transform.translate(
+          offset: const Offset(-60, -34),
+          child: Container(
+            width: 120,
+            height: 68,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(color: AppColors.accent, width: 1.5),
+              boxShadow: const [BoxShadow(color: Color(0x99000000), blurRadius: 12)],
+            ),
+            child: Opacity(opacity: 0.9, child: MediaThumb(asset: asset, path: c.thumbPathFor(asset), iconSize: 20)),
+          ),
+        ),
+      ),
+      childWhenDragging: Opacity(opacity: 0.4, child: child),
+      child: child,
+    );
+  }
+
   Widget _buildGrid(List<MediaAsset> items) {
     return GridView.builder(
       padding: const EdgeInsets.all(8),
@@ -139,14 +169,14 @@ class _MediaPanelState extends State<MediaPanel> {
       itemCount: items.length,
       itemBuilder: (context, i) {
         final asset = items[i];
-        return _MediaTile(
+        return _draggable(asset, _MediaTile(
           asset: asset,
           thumbPath: c.thumbPathFor(asset),
           selected: asset.id == c.selectedId && c.focus == FocusArea.media,
           onTap: () => c.select(asset.id),
           onDoubleTap: () => widget.onAddToTimeline(asset.id),
           onMenu: () => _showActions(asset),
-        );
+        ));
       },
     );
   }
@@ -158,10 +188,9 @@ class _MediaPanelState extends State<MediaPanel> {
       itemBuilder: (context, i) {
         final asset = items[i];
         final selected = asset.id == c.selectedId && c.focus == FocusArea.media;
-        return GestureDetector(
+        return _draggable(asset, GestureDetector(
           onTap: () => c.select(asset.id),
           onDoubleTap: () => widget.onAddToTimeline(asset.id),
-          onLongPress: () => _showActions(asset),
           onSecondaryTap: () => _showActions(asset),
           child: Container(
             height: 54,
@@ -206,10 +235,11 @@ class _MediaPanelState extends State<MediaPanel> {
                     child: Text(formatDuration(asset.durationMs),
                         style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                   ),
+                _MoreButton(onTap: () => _showActions(asset)),
               ],
             ),
           ),
-        );
+        ));
       },
     );
   }
@@ -241,7 +271,6 @@ class _MediaTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       onDoubleTap: onDoubleTap,
-      onLongPress: onMenu,
       onSecondaryTap: onMenu,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
@@ -268,6 +297,7 @@ class _MediaTile extends StatelessWidget {
                     ),
                     if (asset.durationMs != null)
                       Positioned(right: 5, bottom: 5, child: Pill(formatDuration(asset.durationMs))),
+                    Positioned(right: 0, top: 0, child: _MoreButton(onTap: onMenu)),
                     if (asset.offline)
                       const ColoredBox(
                         color: Color(0xB30D0E10),
@@ -341,6 +371,36 @@ class _EmptyMedia extends StatelessWidget {
               label: const Text('Medya ekle'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MoreButton extends StatelessWidget {
+  const _MoreButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tip(
+      data: const TipData('Seçenekler', 'Zaman çizelgesine ekle, yeniden bağla ya da kaldır.'),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: const SizedBox(
+          width: 34,
+          height: 34,
+          child: Center(
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: Color(0xAA0D0E10), shape: BoxShape.circle),
+              child: Padding(
+                padding: EdgeInsets.all(3),
+                child: Icon(Icons.more_vert, size: 16, color: AppColors.textPrimary),
+              ),
+            ),
+          ),
         ),
       ),
     );

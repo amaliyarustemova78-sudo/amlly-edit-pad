@@ -193,7 +193,8 @@ class WorkspaceController extends ChangeNotifier {
     return end;
   }
 
-  bool addToTimeline(String assetId) {
+  /// [atMs] verilirse o noktaya (çakışma varsa ilk boş yere) bırakır; verilmezse kanalın sonuna ekler.
+  bool addToTimeline(String assetId, {int? atMs}) {
     final asset = _find(assetId);
     if (asset == null) return false;
     final track = asset.kind == MediaKind.audio ? TimelineClip.audioTrack : TimelineClip.videoTrack;
@@ -204,7 +205,7 @@ class WorkspaceController extends ChangeNotifier {
       id: 'k${_newId()}',
       assetId: asset.id,
       track: track,
-      startMs: trackEnd(track),
+      startMs: atMs == null ? trackEnd(track) : _freeSlot(track, math.max(0, atMs), length),
       inMs: 0,
       outMs: length,
     );
@@ -213,6 +214,15 @@ class WorkspaceController extends ChangeNotifier {
     _focus = FocusArea.timeline;
     _changed();
     return true;
+  }
+
+  int _freeSlot(int track, int from, int length) {
+    final lane = _doc.clips.where((c) => c.track == track).toList()..sort((a, b) => a.startMs.compareTo(b.startMs));
+    var start = from;
+    for (final c in lane) {
+      if (c.endMs > start && c.startMs < start + length) start = c.endMs;
+    }
+    return start;
   }
 
   void deleteClip(String id) {

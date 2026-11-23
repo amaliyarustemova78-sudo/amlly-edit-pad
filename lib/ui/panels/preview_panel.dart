@@ -134,7 +134,11 @@ class PreviewPanel extends StatelessWidget {
       return MediaThumb(asset: asset, path: controller.thumbPathFor(asset), fit: BoxFit.contain, iconSize: 40);
     }
     if (asset.kind == MediaKind.audio) {
-      return _Hint(icon: Icons.graphic_eq, text: asset.name);
+      final err = playback.sourceError;
+      return _Hint(icon: Icons.graphic_eq, text: err == null ? asset.name : 'Ses açılamadı\n$err');
+    }
+    if (video == null && playback.sourceError != null) {
+      return _Hint(icon: Icons.error_outline, text: 'Video açılamadı\n${playback.sourceError}');
     }
     if (video == null) {
       return Stack(fit: StackFit.expand, children: [
@@ -161,6 +165,9 @@ class PreviewPanel extends StatelessWidget {
         if (asset == null) return const SizedBox.expand();
         if (asset.offline) return const _Hint(icon: Icons.link_off, text: 'Medyaya ulaşılamıyor');
         final video = playback.programVideo;
+        if (video == null && asset.kind != MediaKind.image && playback.programError != null) {
+          return _Hint(icon: Icons.error_outline, text: 'Video açılamadı\n${playback.programError}');
+        }
         if (asset.kind == MediaKind.image || video == null) {
           return MediaThumb(asset: asset, path: controller.thumbPathFor(asset), fit: BoxFit.contain, iconSize: 40);
         }
@@ -202,7 +209,7 @@ class _Hint extends StatelessWidget {
             const SizedBox(height: 8),
             Text(text,
                 textAlign: TextAlign.center,
-                maxLines: 3,
+                maxLines: 6,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           ],

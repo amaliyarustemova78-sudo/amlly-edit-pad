@@ -150,8 +150,9 @@ class _WorkspacePageState extends State<WorkspacePage> {
     if (!c.splitAtPlayhead()) _toast('Bölmek için oynatma kafasını bir klibin üstüne getir');
   }
 
-  void _addToTimeline(String id) {
-    if (c.addToTimeline(id)) {
+  void _addToTimeline(String id, {int? atMs}) {
+    _playback.pause();
+    if (c.addToTimeline(id, atMs: atMs)) {
       final clip = c.selectedClip;
       if (clip != null) {
         _playback.setMode(PreviewMode.program);
@@ -333,6 +334,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
         onAddSelected: _addSelected,
         onSplit: _split,
         onDeleteClip: _deleteSelection,
+        onDropMedia: (id, ms) => _addToTimeline(id, atMs: ms),
       ),
     );
   }

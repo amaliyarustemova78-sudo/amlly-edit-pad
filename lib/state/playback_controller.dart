@@ -37,6 +37,12 @@ class PlaybackController extends ChangeNotifier {
   bool _syncing = false;
   bool _syncAgain = false;
 
+  /// Bu cihazda çalıştığı görülen görüntü yolu; sonraki açılışlarda önce o denenir.
+  static VideoViewType _preferredView = VideoViewType.textureView;
+  String? _lastError;
+  String? sourceError;
+  String? programError;
+
   String? _sourceAssetId;
   VideoPlayerController? _sourceCtrl;
   final ValueNotifier<int> sourcePosition = ValueNotifier<int>(0);
@@ -105,11 +111,17 @@ class PlaybackController extends ChangeNotifier {
     _sourceCtrl?.removeListener(_onSourceTick);
     _sourceCtrl = null;
     _sourceAssetId = assetId;
+    sourceError = null;
     sourcePosition.value = 0;
     _notify();
     if (asset == null || asset.offline || asset.kind == MediaKind.image) return;
     final ctrl = await _controllerFor('s', asset);
-    if (_sourceAssetId != assetId || ctrl == null) return;
+    if (_sourceAssetId != assetId) return;
+    if (ctrl == null) {
+      sourceError = _lastError ?? 'Bilinmeyen hata';
+      _notify();
+      return;
+    }
     _sourceCtrl = ctrl;
     ctrl.addListener(_onSourceTick);
     await ctrl.seekTo(Duration.zero);
@@ -269,7 +281,18 @@ class PlaybackController extends ChangeNotifier {
       return;
     }
     final ctrl = await _controllerFor('p$track', asset);
-    if (ctrl == null || _disposed) return;
+    if (_disposed) return;
+    if (ctrl == null) {
+      if (track == TimelineClip.videoTrack && programError == null) {
+        programError = _lastError ?? 'Bilinmeyen hata';
+        _notify();
+      }
+      return;
+    }
+    if (track == TimelineClip.videoTrack && programError != null) {
+      programError = null;
+      _notify();
+    }
     final target = clip.inMs + (w.playhead.value - clip.startMs);
     if (slot.clipId != clip.id || !identical(slot.ctrl, ctrl)) {
       final old = slot.ctrl;
@@ -307,16 +330,28 @@ class PlaybackController extends ChangeNotifier {
       return Future.value(cached);
     }
     return _loading.putIfAbsent(key, () async {
-      final ctrl = VideoPlayerController.contentUri(Uri.parse(asset.uri));
-      try {
-        await ctrl.initialize();
-        await ctrl.setLooping(false);
-      } catch (_) {
-        await ctrl.dispose();
-        _loading.remove(key);
-        return null;
+      final order = <VideoViewType>[
+        _preferredView,
+        if (_preferredView == VideoViewType.textureView) VideoViewType.platformView else VideoViewType.textureView,
+      ];
+      VideoPlayerController? ctrl;
+      for (final view in order) {
+        final attempt = VideoPlayerController.contentUri(Uri.parse(asset.uri), viewType: view);
+        try {
+          await attempt.initialize().timeout(const Duration(seconds: 12));
+          await attempt.setLooping(false);
+          _preferredView = view;
+          ctrl = attempt;
+          break;
+        } on TimeoutException {
+          _lastError = 'Oynatıcı 12 saniyede yanıt vermedi (${view.name})';
+        } catch (e) {
+          _lastError = '${view.name}: $e';
+        }
+        unawaited(attempt.dispose());
       }
       _loading.remove(key);
+      if (ctrl == null) return null;
       if (_disposed) {
         await ctrl.dispose();
         return null;

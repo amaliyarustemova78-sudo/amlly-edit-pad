@@ -1,15 +1,10 @@
-## AmllyEdit Pad v0.2.0: Oynatma ve zaman çizelgesi
+## AmllyEdit Pad v0.2.1: Oynatma düzeltmesi ve sürükle-bırak
 
-**Yenilikler**
-- **Gerçek oynatma:** Havuzda bir dosyaya dokununca *Kaynak* monitöründe oynar. Zaman çizelgesindeki kurgu *Program* monitöründe oynar. Görüntüye dokunmak oynatır ya da durdurur.
-- **Zaman çizelgesi:** Havuzdaki bir dosyaya çift dokun (ya da ⊕) ve dosya çizelgenin sonuna eklenir. Video ve fotoğraflar V1'e, sesler A1'e gider.
-- **Klip düzenleme:** Klibi parmakla sağa sola sürükleyerek taşı. **Böl** (✂, Ctrl+B) ile oynatma kafasından ikiye ayır. Seçili klibi çöp kutusuyla ya da Delete tuşuyla sil.
-- **Geri al / yinele:** Üst çubuktaki oklar ya da Ctrl+Z / Ctrl+Y.
-- **Gezinme:** Cetvele dokunarak ya da cetveli sürükleyerek konuma git. Kare kare ilerle, yakınlaştır ve uzaklaştır.
-- **Düzeltmeler:** Delete ve diğer kısayollar artık her zaman çalışıyor. Panel ayırıcıları parmakla tutulacak kadar genişletildi. Geri tuşu artık uygulamayı soru sormadan kapatmıyor, önce onay istiyor. Sol üstte bir çıkış düğmesi de var.
+**Düzeltmeler**
+- **Video oynatma:** Oynatıcı artık iki farklı görüntü yolunu sırayla deniyor ve bu tablette çalışanı hatırlıyor. Uyumluluk için grafik motoru Huawei yongalarında daha kararlı olan moda alındı. Video yine açılmazsa önizlemede artık sonsuz dönen çark yerine hatanın nedeni yazıyor.
+- **Ok tuşları:** ←/→ artık düğmeler arasında gezinmiyor. Bir kare ileri/geri gidiyor, Shift ile 1 saniye. Boşluk ve Enter da odaktaki düğmeye basmıyor.
+- **Cetvel:** Zaman etiketleri okunaklı hale geldi (ör. 0:55 ve 0:57,5).
 
-**Klavye:** Boşluk/K oynat-durdur · L oynat · J 2 sn geri · ←/→ bir kare (Shift ile 1 sn) · Home/End · Ctrl+B böl · Delete sil · E ekle · Ctrl+Z/Y · +/- yakınlaştır · Esc seçimi kaldır
-
-**Kurulum:** APK'yı indirip aç. Mevcut sürümün üstüne kurulur, silmene gerek yok.
-
-**Sıradaki sürüm (v0.3):** Klip kenarlarından kırpma, mıknatıs (yapıştırma), boşluk kapatma (ripple), çoklu kanal.
+**Yenilik**
+- **Sürükle-bırak:** Havuzdaki bir dosyayı basılı tut, zaman çizelgesine sürükle ve istediğin yere bırak. Bıraktığın yer doluysa ilk boş yere yerleşir.
+- Dosya seçenekleri artık küçük resmin sağ üstündeki **⋮** düğmesinde.
