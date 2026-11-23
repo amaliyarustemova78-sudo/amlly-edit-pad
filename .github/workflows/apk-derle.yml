@@ -1,0 +1,138 @@
+name: APK Derle
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-derle
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.9'
+
+jobs:
+  derle:
+    name: Analiz + Test + Imzali APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Android iskeletini tamamla
+        run: |
+          set -o pipefail
+          {
+            flutter --version
+            flutter create --org com.amllystudio --project-name amlly_edit_pad --platforms android "$RUNNER_TEMP/iskelet"
+            mkdir -p "$RUNNER_TEMP/ozel"
+            cp -r android/. "$RUNNER_TEMP/ozel/"
+            rm -rf android
+            cp -r "$RUNNER_TEMP/iskelet/android" android
+            cp -r "$RUNNER_TEMP/ozel/." android/
+            find android/app/src/main -name 'MainActivity*' -print
+          } 2>&1 | tee ci-1-iskelet.log
+
+      - name: Bagimliliklar
+        run: |
+          set -o pipefail
+          flutter pub get 2>&1 | tee ci-2-pub.log
+
+      - name: Statik analiz
+        run: |
+          set -o pipefail
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee ci-3-analiz.log
+
+      - name: Testler
+        run: |
+          set -o pipefail
+          flutter test 2>&1 | tee ci-4-test.log
+
+      - name: APK derle
+        run: |
+          set -o pipefail
+          flutter build apk --release --target-platform android-arm64 --build-number ${{ github.run_number }} 2>&1 | tee ci-5-derleme.log
+
+      - name: Sabit anahtarla imzala
+        env:
+          AMLLY_IMZA_PAROLA: ${{ secrets.AMLLY_IMZA_PAROLA }}
+        run: |
+          set -o pipefail
+          {
+            APK=build/app/outputs/flutter-apk/app-release.apk
+            BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+            if [ -n "$AMLLY_IMZA_PAROLA" ]; then
+              "$BT/apksigner" sign --ks android/imza/amlly-release.p12 --ks-type PKCS12 \
+                --ks-key-alias amlly --ks-pass env:AMLLY_IMZA_PAROLA "$APK"
+              echo "IMZA=sabit" >> "$GITHUB_ENV"
+            else
+              echo "::warning::AMLLY_IMZA_PAROLA tanimli degil; APK gecici anahtarla imzali."
+              echo "IMZA=gecici" >> "$GITHUB_ENV"
+            fi
+            "$BT/apksigner" verify --print-certs "$APK" | head -4
+            VERSION=$(grep -E '^version:' pubspec.yaml | sed -E 's/version: *([^+]+).*/\1/')
+            echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+            cp "$APK" "AmllyEditPad-v$VERSION.apk"
+          } 2>&1 | tee ci-6-imza.log
+
+      - name: Artifact olarak yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: AmllyEditPad-v${{ env.APP_VERSION }}-b${{ github.run_number }}
+          path: AmllyEditPad-v${{ env.APP_VERSION }}.apk
+
+      - name: Indirme sayfasini (Release) guncelle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v$APP_VERSION"
+          FILE="AmllyEditPad-v$APP_VERSION.apk"
+          TITLE="AmllyEdit Pad v$APP_VERSION (derleme ${{ github.run_number }}, imza: $IMZA)"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes-file SURUM_NOTLARI.md
+          else
+            gh release create "$TAG" "$FILE" --title "$TITLE" --notes-file SURUM_NOTLARI.md --target "$GITHUB_SHA"
+          fi
+
+      - name: Derleme raporunu ci-rapor dalina yaz
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/rapor"
+          {
+            echo "derleme: ${{ github.run_number }}  commit: ${{ github.sha }}  sonuc: ${{ job.status }}"
+            for f in ci-*.log; do
+              [ -f "$f" ] || continue
+              echo "===== $f ====="
+              tail -n 250 "$f"
+            done
+          } > "$RUNNER_TEMP/rapor/son-derleme.txt"
+          cd "$RUNNER_TEMP/rapor"
+          git init -q
+          git checkout -q -b ci-rapor
+          git config user.name "amlly-ci"
+          git config user.email "ci@users.noreply.github.com"
+          git add son-derleme.txt
+          git commit -qm "CI raporu #${{ github.run_number }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-rapor

@@ -1,0 +1,26 @@
+name: amlly_edit_pad
+description: "AmllyEdit Pad - Sifir Kasma, AI Destekli Profesyonel Tablet Kurgu Studyosu"
+publish_to: 'none'
+version: 5.0.0+5
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.5.0
+  shared_preferences: ^2.2.3
+  ffmpeg_kit_flutter_full_gpl: ^6.0.3
+  video_player: ^2.8.6
+  file_picker: ^8.0.3
+  path_provider: ^2.1.3
+  http: ^1.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
