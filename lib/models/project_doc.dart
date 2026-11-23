@@ -12,10 +12,13 @@ class ProjectDoc {
     List<TimelineClip>? clips,
     this.playheadMs = 0,
     this.pxPerSecond = 40,
+    List<int>? markers,
+    this.snapping = true,
     this.aspect = '16:9',
     this.showSafeArea = false,
     this.revision = 0,
-  }) : clips = clips ?? <TimelineClip>[];
+  })  : clips = clips ?? <TimelineClip>[],
+        markers = markers ?? <int>[];
 
   factory ProjectDoc.empty() {
     final now = DateTime.now();
@@ -67,6 +70,12 @@ class ProjectDoc {
       media: media,
       layout: layout,
       clips: clips,
+      markers: [
+        if (j['markers'] is List)
+          for (final m in j['markers'] as List)
+            if (m is num) m.toInt(),
+      ],
+      snapping: (j['snapping'] as bool?) ?? true,
       playheadMs: (j['playheadMs'] as num?)?.toInt() ?? 0,
       pxPerSecond: (j['pxPerSecond'] as num?)?.toDouble() ?? 40,
       aspect: (j['aspect'] as String?) ?? '16:9',
@@ -85,6 +94,8 @@ class ProjectDoc {
   final Map<String, double> layout;
   final List<TimelineClip> clips;
   int playheadMs;
+  final List<int> markers;
+  bool snapping;
   double pxPerSecond;
   String aspect;
   bool showSafeArea;
@@ -104,5 +115,7 @@ class ProjectDoc {
         'playheadMs': playheadMs,
         'pxPerSecond': pxPerSecond,
         'clips': [for (final c in clips) c.toJson()],
+        'markers': markers,
+        'snapping': snapping,
       };
 }

@@ -1,10 +1,23 @@
-## AmllyEdit Pad v0.2.1: Oynatma düzeltmesi ve sürükle-bırak
+## AmllyEdit Pad v0.3.0: Profesyonel kurgu araçları ve kısayollar
 
-**Düzeltmeler**
-- **Video oynatma:** Oynatıcı artık iki farklı görüntü yolunu sırayla deniyor ve bu tablette çalışanı hatırlıyor. Uyumluluk için grafik motoru Huawei yongalarında daha kararlı olan moda alındı. Video yine açılmazsa önizlemede artık sonsuz dönen çark yerine hatanın nedeni yazıyor.
-- **Ok tuşları:** ←/→ artık düğmeler arasında gezinmiyor. Bir kare ileri/geri gidiyor, Shift ile 1 saniye. Boşluk ve Enter da odaktaki düğmeye basmıyor.
-- **Cetvel:** Zaman etiketleri okunaklı hale geldi (ör. 0:55 ve 0:57,5).
+**Kurgu**
+- **Kırpma tutamaçları:** Seçili klibin iki kenarındaki beyaz tutamaçları sürükleyerek başını ve sonunu kısalt ya da uzat.
+- **Giriş / çıkış (I / O):** Kaynak monitöründe bir videonun yalnızca istediğin bölümünü işaretle. E, sürükle-bırak, `,` ve `.` yalnızca o bölümü ekler.
+- **Ekle `,` / üzerine yaz `.`:** Seçili dosyayı oynatma kafasının olduğu yere yerleştirir. `,` sağdaki klipleri iter, `.` altındakileri ezer.
+- **Kopyala / kes / yapıştır / çoğalt:** Ctrl+C / Ctrl+X / Ctrl+V / Ctrl+D.
+- **Çoklu seçim:** Ctrl ya da Shift basılıyken kliplere dokun, Ctrl+A ile hepsini seç.
+- **Boşluk kapatarak silme:** Shift+Delete.
+- **Q / W:** Klibin başını ya da sonunu oynatma kafasına kadar kırpar ve boşluğu kapatır.
+- **Aralık silme:** Programda I/O ile bir aralık işaretle. `;` aralığı kaldırır (boşluk kalır), `'` aralığı çıkarır (boşluk kapanır).
+- **Bütün kanalları böl:** Ctrl+Shift+K.
+- **Mıknatıs (S):** Klipler taşınırken ve kırpılırken kenarlara, oynatma kafasına ve işaretçilere yapışır.
+- **İşaretçiler (M):** Cetvelde sarı işaretler. Shift+M sonraki işaretçiye, Ctrl+M önceki işaretçiye atlar.
+- **Klip menüsü:** Bir klibe uzun basınca bütün işlemler listelenir.
 
-**Yenilik**
-- **Sürükle-bırak:** Havuzdaki bir dosyayı basılı tut, zaman çizelgesine sürükle ve istediğin yere bırak. Bıraktığın yer doluysa ilk boş yere yerleşir.
-- Dosya seçenekleri artık küçük resmin sağ üstündeki **⋮** düğmesinde.
+**Oynatma**
+- **J / K / L:** L ileri oynatır (tekrar basınca 2x, 4x, 8x), J geri oynatır (tekrar basınca hızlanır), K durdurur.
+- **↑ / ↓:** Önceki ya da sonraki kesim noktasına atlar.
+- **`:** Kaynak ve Program monitörü arasında geçer.
+- **Sığdır (\\):** Bütün kurguyu ekrana sığdırır.
+
+**Kısayol listesi:** Üst çubuktaki ⌨ düğmesi ya da F1 tuşu bütün kısayolları gösterir.

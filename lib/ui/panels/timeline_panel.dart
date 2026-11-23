@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../app/theme.dart';
 import '../../core/format.dart';
@@ -24,7 +25,14 @@ class TimelinePanel extends StatefulWidget {
     required this.onSplit,
     required this.onDeleteClip,
     required this.onDropMedia,
+    required this.onClipMenu,
+    required this.viewportWidth,
   });
+
+  final void Function(String clipId) onClipMenu;
+
+  /// Çizelgenin görünen genişliği (\\ ile sığdırma için).
+  final ValueNotifier<double> viewportWidth;
 
   final void Function(String assetId, int atMs) onDropMedia;
 
@@ -101,6 +109,19 @@ class _TimelinePanelState extends State<TimelinePanel> {
         ),
         ToolButton(
           size: 30,
+          icon: Icons.near_me_outlined,
+          active: c.snapping,
+          tip: const TipData('Mıknatıs', 'Açıkken klipler kenarlara, oynatma kafasına ve işaretçilere yapışır.', shortcut: 'S'),
+          onPressed: c.toggleSnapping,
+        ),
+        ToolButton(
+          size: 30,
+          icon: Icons.bookmark_add_outlined,
+          tip: const TipData('İşaretçi', 'Oynatma kafasına işaretçi koyar; aynı yerdeyse kaldırır.', shortcut: 'M'),
+          onPressed: c.toggleMarker,
+        ),
+        ToolButton(
+          size: 30,
           icon: Icons.content_cut,
           tip: const TipData('Böl', 'Oynatma kafasının altındaki klibi ikiye ayırır.', shortcut: 'Ctrl+B'),
           onPressed: c.clips.isEmpty ? null : widget.onSplit,
@@ -108,7 +129,11 @@ class _TimelinePanelState extends State<TimelinePanel> {
         ToolButton(
           size: 30,
           icon: Icons.delete_outline,
-          tip: const TipData('Klibi sil', 'Seçili klibi çizelgeden kaldırır. Havuzdaki dosya kalır.', shortcut: 'Delete'),
+          tip: const TipData(
+            'Klibi sil',
+            'Seçili klipleri çizelgeden kaldırır. Shift+Delete boşluğu da kapatır. Havuzdaki dosya kalır.',
+            shortcut: 'Delete',
+          ),
           onPressed: selectedClip == null ? null : widget.onDeleteClip,
         ),
         const SizedBox(width: 6),
@@ -120,6 +145,12 @@ class _TimelinePanelState extends State<TimelinePanel> {
         ),
         ToolButton(
           size: 30,
+          icon: Icons.fit_screen_outlined,
+          tip: const TipData('Sığdır', 'Bütün kurguyu ekrana sığdırır.', shortcut: '\\'),
+          onPressed: () => c.zoomToFit(_viewport),
+        ),
+        ToolButton(
+          size: 30,
           icon: Icons.zoom_in,
           tip: const TipData('Yakınlaştır', 'Çizelgeyi genişletir; ince kesim için.', shortcut: '+'),
           onPressed: () => c.zoom(1.5),
@@ -127,6 +158,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       ],
       child: LayoutBuilder(builder: (context, constraints) {
         _viewport = math.max(0, constraints.maxWidth - _headerWidth);
+        widget.viewportWidth.value = _viewport;
         final contentWidth = math.max(_viewport, (c.timelineEndMs / 1000 + 20) * pps);
         return SingleChildScrollView(
           child: SizedBox(
@@ -222,7 +254,14 @@ class _TimelinePanelState extends State<TimelinePanel> {
       child: Container(
         height: _rulerHeight,
         decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
-        child: CustomPaint(painter: RulerPainter(pxPerSecond: pps)),
+        child: CustomPaint(
+          painter: RulerPainter(
+            pxPerSecond: pps,
+            markers: c.markers,
+            inMs: c.programIn,
+            outMs: c.programOut,
+          ),
+        ),
       ),
     );
   }
@@ -269,12 +308,102 @@ class _TimelinePanelState extends State<TimelinePanel> {
 
   Widget _clipView(TimelineClip clip) {
     final asset = c.assetById(clip.assetId);
-    final selected = clip.id == c.selectedClipId && c.focus == FocusArea.timeline;
+    final selected = c.isClipSelected(clip.id) && c.focus == FocusArea.timeline;
     final audio = clip.track == TimelineClip.audioTrack;
+    final body = Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: audio ? const Color(0xFF2B4034) : const Color(0xFF2A3A4C),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: selected ? AppColors.playhead : (asset?.offline ?? true ? AppColors.danger : const Color(0xFF41536A)),
+          width: selected ? 2 : 1,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!audio && asset != null && asset.kind != MediaKind.audio)
+            SizedBox(
+              width: 64,
+              child: MediaThumb(asset: asset, path: c.thumbPathFor(asset), iconSize: 14),
+            ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    asset?.name ?? 'Eksik medya',
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    softWrap: false,
+                    style: const TextStyle(fontSize: 11, color: AppColors.textPrimary),
+                  ),
+                  Text(
+                    formatDuration(clip.durationMs),
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    softWrap: false,
+                    style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    Widget handle(bool head) => Positioned(
+          left: head ? 0 : null,
+          right: head ? null : 0,
+          top: 0,
+          bottom: 0,
+          width: 16,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragStart: (_) {
+              p.pause();
+              _dragDx = 0;
+              c.beginTrim(clip.id);
+            },
+            onHorizontalDragUpdate: (d) {
+              _dragDx += d.delta.dx;
+              c.updateTrim(clip.id, head: head, deltaMs: (_dragDx / pps * 1000).round());
+            },
+            onHorizontalDragEnd: (_) => c.endTrim(),
+            onHorizontalDragCancel: c.endTrim,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeColumn,
+              child: Align(
+                alignment: head ? Alignment.centerLeft : Alignment.centerRight,
+                child: Container(
+                  width: 6,
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  decoration: BoxDecoration(color: AppColors.playhead, borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+            ),
+          ),
+        );
+
     return GestureDetector(
       onTapUp: (_) {
         p.pause();
-        c.selectClip(clip.id);
+        final kb = HardwareKeyboard.instance;
+        c.selectClip(clip.id, additive: kb.isControlPressed || kb.isShiftPressed || kb.isMetaPressed);
+      },
+      onLongPress: () {
+        p.pause();
+        if (!c.isClipSelected(clip.id)) c.selectClip(clip.id);
+        widget.onClipMenu(clip.id);
+      },
+      onSecondaryTapUp: (_) {
+        if (!c.isClipSelected(clip.id)) c.selectClip(clip.id);
+        widget.onClipMenu(clip.id);
       },
       onHorizontalDragStart: (_) {
         p.pause();
@@ -289,63 +418,39 @@ class _TimelinePanelState extends State<TimelinePanel> {
       },
       onHorizontalDragEnd: (_) => c.endMove(),
       onHorizontalDragCancel: c.endMove,
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: audio ? const Color(0xFF2B4034) : const Color(0xFF2A3A4C),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: selected ? AppColors.playhead : (asset?.offline ?? true ? AppColors.danger : const Color(0xFF41536A)),
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (!audio && asset != null && asset.kind != MediaKind.audio)
-              SizedBox(
-                width: 64,
-                child: MediaThumb(asset: asset, path: c.thumbPathFor(asset), iconSize: 14),
-              ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      asset?.name ?? 'Eksik medya',
-                      maxLines: 1,
-                      overflow: TextOverflow.clip,
-                      softWrap: false,
-                      style: const TextStyle(fontSize: 11, color: AppColors.textPrimary),
-                    ),
-                    Text(
-                      formatDuration(clip.durationMs),
-                      maxLines: 1,
-                      overflow: TextOverflow.clip,
-                      softWrap: false,
-                      style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          body,
+          if (selected && clip.durationMs / 1000 * pps > 40) ...[handle(true), handle(false)],
+        ],
       ),
     );
   }
 }
 
 class RulerPainter extends CustomPainter {
-  const RulerPainter({required this.pxPerSecond});
+  const RulerPainter({required this.pxPerSecond, this.markers = const [], this.inMs, this.outMs});
 
   final double pxPerSecond;
+  final List<int> markers;
+  final int? inMs;
+  final int? outMs;
+
+  double _x(int ms) => ms / 1000 * pxPerSecond;
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (inMs != null || outMs != null) {
+      final a = inMs == null ? 0.0 : _x(inMs!);
+      final b = outMs == null ? size.width : _x(outMs!);
+      canvas.drawRect(Rect.fromLTRB(a, 0, b, size.height), Paint()..color = const Color(0x337F9CB8));
+      final edge = Paint()
+        ..color = AppColors.accent
+        ..strokeWidth = 2;
+      if (inMs != null) canvas.drawLine(Offset(a, 0), Offset(a, size.height), edge);
+      if (outMs != null) canvas.drawLine(Offset(b, 0), Offset(b, size.height), edge);
+    }
     // Çizgiler arası en az ~10 piksel olacak şekilde adım seç.
     const steps = <int>[100, 200, 500, 1000, 2000, 5000, 10000, 30000, 60000, 120000, 300000];
     var minor = steps.last;
@@ -377,8 +482,23 @@ class RulerPainter extends CustomPainter {
         tp.dispose();
       }
     }
+
+    final markerPaint = Paint()..color = AppColors.warn;
+    for (final m in markers) {
+      final x = _x(m);
+      canvas.drawPath(
+        Path()
+          ..moveTo(x - 5, 0)
+          ..lineTo(x + 5, 0)
+          ..lineTo(x + 5, 7)
+          ..lineTo(x, 12)
+          ..lineTo(x - 5, 7)
+          ..close(),
+        markerPaint,
+      );
+    }
   }
 
   @override
-  bool shouldRepaint(covariant RulerPainter oldDelegate) => oldDelegate.pxPerSecond != pxPerSecond;
+  bool shouldRepaint(covariant RulerPainter oldDelegate) => true;
 }

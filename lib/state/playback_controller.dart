@@ -26,6 +26,7 @@ class PlaybackController extends ChangeNotifier {
 
   PreviewMode _mode = PreviewMode.program;
   bool _playing = false;
+  double _rate = 1;
   bool _disposed = false;
   Timer? _timer;
   DateTime _last = DateTime.now();
@@ -51,6 +52,9 @@ class PlaybackController extends ChangeNotifier {
 
   PreviewMode get mode => _mode;
   bool get playing => _playing;
+
+  /// Oynatma hızı: 1 normal, 2/4/8 hızlı ileri, eksi değerler geri.
+  double get rate => _rate;
   VideoPlayerController? get programVideo => _slots[TimelineClip.videoTrack].ctrl;
   VideoPlayerController? get sourceVideo => _sourceCtrl;
   MediaAsset? get sourceAsset => _sourceAssetId == null ? null : w.assetById(_sourceAssetId!);
@@ -145,21 +149,48 @@ class PlaybackController extends ChangeNotifier {
 
   void togglePlay() => _playing ? pause() : play();
 
+  /// L: ileri (tekrar basınca 2x, 4x, 8x). J: geri (tekrar basınca hızlanır). K: durdur.
+  void shuttle(int direction) {
+    double next;
+    if (direction > 0) {
+      next = (_playing && _rate > 0) ? (_rate * 2).clamp(1, 8).toDouble() : 1;
+    } else {
+      next = (_playing && _rate < 0) ? (_rate * 2).clamp(-8, -1).toDouble() : -1;
+    }
+    if (_playing) pause();
+    _start(next);
+  }
+
   void play() {
     if (_playing) return;
+    _start(1);
+  }
+
+  void _start(double rate) {
+    _rate = rate;
     if (_mode == PreviewMode.source) {
       final c = _sourceCtrl;
       if (c == null || !c.value.isInitialized) return;
       final end = c.value.duration.inMilliseconds;
-      if (c.value.position.inMilliseconds >= end - 60) unawaited(c.seekTo(Duration.zero));
+      if (rate > 0 && c.value.position.inMilliseconds >= end - 60) unawaited(c.seekTo(Duration.zero));
+      if (rate < 0 && c.value.position.inMilliseconds <= 0) return;
       _playing = true;
-      unawaited(c.play());
+      if (rate > 0) {
+        unawaited(c.setPlaybackSpeed(rate));
+        unawaited(c.play());
+      } else {
+        unawaited(c.pause());
+        _last = DateTime.now();
+        _timer?.cancel();
+        _timer = Timer.periodic(const Duration(milliseconds: 80), (_) => _reverseSourceTick());
+      }
       _notify();
       return;
     }
     final end = w.timelineEndMs;
     if (end <= 0) return;
-    if (w.playhead.value >= end - 20) w.setPlayhead(0);
+    if (rate > 0 && w.playhead.value >= end - 20) w.setPlayhead(0);
+    if (rate < 0 && w.playhead.value <= 0) return;
     _playing = true;
     _last = DateTime.now();
     _timer?.cancel();
@@ -168,9 +199,31 @@ class PlaybackController extends ChangeNotifier {
     unawaited(_syncProgram());
   }
 
+  void _reverseSourceTick() {
+    final c = _sourceCtrl;
+    if (c == null) return;
+    final now = DateTime.now();
+    final dt = now.difference(_last).inMilliseconds;
+    _last = now;
+    final next = sourcePosition.value + (dt * _rate).round();
+    if (next <= 0) {
+      seekSource(0);
+      pause();
+      return;
+    }
+    seekSource(next);
+  }
+
   void pause() {
     final wasPlaying = _playing;
     _playing = false;
+    if (_rate != 1) {
+      for (final slot in _slots) {
+        unawaited(slot.ctrl?.setPlaybackSpeed(1));
+      }
+      unawaited(_sourceCtrl?.setPlaybackSpeed(1));
+    }
+    _rate = 1;
     _timer?.cancel();
     _timer = null;
     for (final slot in _slots) {
@@ -226,6 +279,17 @@ class PlaybackController extends ChangeNotifier {
     final dt = now.difference(_last).inMilliseconds;
     _last = now;
     var ph = w.playhead.value;
+    if (_rate < 0) {
+      ph += (dt * _rate).round();
+      if (ph <= 0) {
+        w.setPlayhead(0);
+        pause();
+        return;
+      }
+      w.setPlayhead(ph);
+      unawaited(_syncProgram());
+      return;
+    }
     final slot = _slots[TimelineClip.videoTrack];
     final clip = slot.clipId == null ? null : w.clipById(slot.clipId!);
     final c = slot.ctrl;
@@ -234,7 +298,7 @@ class PlaybackController extends ChangeNotifier {
       ph = clip.startMs + (pos - clip.inMs);
       if (pos >= clip.outMs - 15) ph = clip.endMs;
     } else {
-      ph += dt;
+      ph += (dt * _rate).round();
     }
     final end = w.timelineEndMs;
     if (ph >= end) {
@@ -300,7 +364,8 @@ class PlaybackController extends ChangeNotifier {
       slot.clipId = clip.id;
       slot.ctrl = ctrl;
       await ctrl.seekTo(Duration(milliseconds: target));
-      if (_playing) {
+      if (_playing && _rate > 0) {
+        await ctrl.setPlaybackSpeed(_rate);
         await ctrl.play();
       } else {
         await ctrl.pause();
@@ -309,9 +374,10 @@ class PlaybackController extends ChangeNotifier {
       return;
     }
     final pos = ctrl.value.position.inMilliseconds;
-    if (_playing) {
+    if (_playing && _rate > 0) {
+      if (ctrl.value.playbackSpeed != _rate) await ctrl.setPlaybackSpeed(_rate);
       if (!ctrl.value.isPlaying) await ctrl.play();
-      if ((pos - target).abs() > 400) await ctrl.seekTo(Duration(milliseconds: target));
+      if ((pos - target).abs() > 400 * _rate) await ctrl.seekTo(Duration(milliseconds: target));
     } else {
       if (ctrl.value.isPlaying) await ctrl.pause();
       if ((pos - target).abs() > 30) await ctrl.seekTo(Duration(milliseconds: target));

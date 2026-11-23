@@ -49,8 +49,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
     HardwareKeyboard.instance.removeHandler(_onKey);
     _lifecycle.dispose();
     _playback.dispose();
+    _timelineViewport.dispose();
     super.dispose();
   }
+
+  final ValueNotifier<double> _timelineViewport = ValueNotifier<double>(800);
 
   /// Klavye kısayolları: odak nerede olursa olsun çalışır (dosya seçiciden dönünce de).
   bool _onKey(KeyEvent event) {
@@ -60,79 +63,270 @@ class _WorkspacePageState extends State<WorkspacePage> {
     final kb = HardwareKeyboard.instance;
     final ctrl = kb.isControlPressed || kb.isMetaPressed;
     final shift = kb.isShiftPressed;
+    final alt = kb.isAltPressed;
     final repeat = event is KeyRepeatEvent;
+    final p = _playback;
 
+    // Tekrarlanabilen (basılı tutulabilen) tuşlar
     if (key == LogicalKeyboardKey.arrowLeft) {
-      shift ? _playback.jumpBy(-1000) : _playback.stepFrames(-1);
+      shift ? p.jumpBy(-1000) : p.stepFrames(-1);
       return true;
     }
     if (key == LogicalKeyboardKey.arrowRight) {
-      shift ? _playback.jumpBy(1000) : _playback.stepFrames(1);
+      shift ? p.jumpBy(1000) : p.stepFrames(1);
+      return true;
+    }
+    if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.arrowDown) {
+      _jumpEdit(forward: key == LogicalKeyboardKey.arrowDown);
       return true;
     }
     if (repeat) return false;
 
     if (ctrl) {
-      if (key == LogicalKeyboardKey.keyZ) {
-        shift ? _redo() : _undo();
-        return true;
-      }
-      if (key == LogicalKeyboardKey.keyY) {
-        _redo();
-        return true;
-      }
-      if (key == LogicalKeyboardKey.keyB) {
-        _split();
-        return true;
-      }
-      if (key == LogicalKeyboardKey.keyI) {
-        _import();
-        return true;
-      }
-      return false;
-    }
-    if (key == LogicalKeyboardKey.space || key == LogicalKeyboardKey.keyK) {
-      _playback.togglePlay();
+      final map = <LogicalKeyboardKey, VoidCallback>{
+        LogicalKeyboardKey.keyZ: shift ? _redo : _undo,
+        LogicalKeyboardKey.keyY: _redo,
+        LogicalKeyboardKey.keyB: _split,
+        LogicalKeyboardKey.keyK: shift ? _splitAll : _split,
+        LogicalKeyboardKey.keyI: _import,
+        LogicalKeyboardKey.keyC: _copy,
+        LogicalKeyboardKey.keyX: _cut,
+        LogicalKeyboardKey.keyV: _paste,
+        LogicalKeyboardKey.keyD: _duplicate,
+        LogicalKeyboardKey.keyA: _selectAll,
+        LogicalKeyboardKey.keyS: _saveNow,
+        LogicalKeyboardKey.equal: () => c.zoom(1.5),
+        LogicalKeyboardKey.minus: () => c.zoom(1 / 1.5),
+        LogicalKeyboardKey.keyM: () => _jumpMarker(forward: false),
+      };
+      final action = map[key];
+      if (action == null) return false;
+      action();
       return true;
     }
-    if (key == LogicalKeyboardKey.keyL) {
-      _playback.play();
+
+    if (alt && key == LogicalKeyboardKey.keyX) {
+      _clearMarks();
       return true;
     }
-    if (key == LogicalKeyboardKey.keyJ) {
-      _playback.pause();
-      _playback.jumpBy(-2000);
-      return true;
+
+    final map = <LogicalKeyboardKey, VoidCallback>{
+      LogicalKeyboardKey.space: p.togglePlay,
+      LogicalKeyboardKey.keyK: p.pause,
+      LogicalKeyboardKey.keyL: () => p.shuttle(1),
+      LogicalKeyboardKey.keyJ: () => p.shuttle(-1),
+      LogicalKeyboardKey.home: p.toStart,
+      LogicalKeyboardKey.end: p.toEnd,
+      LogicalKeyboardKey.delete: () => _deleteSelection(ripple: shift),
+      LogicalKeyboardKey.backspace: () => _deleteSelection(ripple: shift),
+      LogicalKeyboardKey.keyE: _addSelected,
+      LogicalKeyboardKey.comma: () => _place(overwrite: false),
+      LogicalKeyboardKey.period: () => _place(overwrite: true),
+      LogicalKeyboardKey.keyI: _markIn,
+      LogicalKeyboardKey.keyO: _markOut,
+      LogicalKeyboardKey.keyX: _markClip,
+      LogicalKeyboardKey.semicolon: () => _removeRange(ripple: false),
+      LogicalKeyboardKey.quote: () => _removeRange(ripple: true),
+      LogicalKeyboardKey.keyQ: () => _rippleTrim(head: true),
+      LogicalKeyboardKey.keyW: () => _rippleTrim(head: false),
+      LogicalKeyboardKey.keyS: _toggleSnap,
+      LogicalKeyboardKey.keyM: shift ? () => _jumpMarker(forward: true) : c.toggleMarker,
+      LogicalKeyboardKey.equal: () => c.zoom(1.5),
+      LogicalKeyboardKey.numpadAdd: () => c.zoom(1.5),
+      LogicalKeyboardKey.add: () => c.zoom(1.5),
+      LogicalKeyboardKey.minus: () => c.zoom(1 / 1.5),
+      LogicalKeyboardKey.numpadSubtract: () => c.zoom(1 / 1.5),
+      LogicalKeyboardKey.backslash: () => c.zoomToFit(_timelineViewport.value),
+      LogicalKeyboardKey.escape: c.clearSelection,
+      LogicalKeyboardKey.f1: _showShortcuts,
+      LogicalKeyboardKey.slash: _showShortcuts,
+      LogicalKeyboardKey.backquote: _toggleMonitor,
+    };
+    final action = map[key];
+    if (action == null) return false;
+    action();
+    return true;
+  }
+
+  void _toggleMonitor() => _playback.setMode(
+        _playback.mode == PreviewMode.source ? PreviewMode.program : PreviewMode.source,
+      );
+
+  void _jumpEdit({required bool forward}) {
+    _playback.pause();
+    _playback.setMode(PreviewMode.program);
+    final ms = c.neighbourEdit(forward: forward);
+    if (ms != null) _playback.seekProgram(ms);
+  }
+
+  void _jumpMarker({required bool forward}) {
+    _playback.pause();
+    _playback.setMode(PreviewMode.program);
+    final ms = c.neighbourMarker(forward: forward);
+    if (ms == null) {
+      _toast('Bu yönde işaretçi yok');
+    } else {
+      _playback.seekProgram(ms);
     }
-    if (key == LogicalKeyboardKey.home) {
-      _playback.toStart();
-      return true;
+  }
+
+  String? get _sourceId => _playback.sourceAsset?.id ?? c.selectedId;
+
+  void _markIn() {
+    final id = _sourceId;
+    if (_playback.mode == PreviewMode.source && id != null) {
+      c.setSourceIn(id, _playback.position);
+    } else {
+      c.setProgramIn(c.playhead.value);
     }
-    if (key == LogicalKeyboardKey.end) {
-      _playback.toEnd();
-      return true;
+  }
+
+  void _markOut() {
+    final id = _sourceId;
+    if (_playback.mode == PreviewMode.source && id != null) {
+      c.setSourceOut(id, _playback.position);
+    } else {
+      c.setProgramOut(c.playhead.value);
     }
-    if (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace) {
-      _deleteSelection();
-      return true;
+  }
+
+  void _markClip() {
+    _playback.setMode(PreviewMode.program);
+    if (!c.markClipAtPlayhead()) _toast('Oynatma kafasının altında klip yok');
+  }
+
+  void _clearMarks() {
+    final id = _sourceId;
+    if (_playback.mode == PreviewMode.source && id != null) {
+      c.clearSourceMarks(id);
+    } else {
+      c.clearProgramMarks();
     }
-    if (key == LogicalKeyboardKey.keyE) {
-      _addSelected();
-      return true;
+  }
+
+  void _place({required bool overwrite}) {
+    final id = _sourceId;
+    if (id == null) {
+      _toast('Önce havuzdan bir dosya seç');
+      return;
     }
-    if (key == LogicalKeyboardKey.equal || key == LogicalKeyboardKey.numpadAdd || key == LogicalKeyboardKey.add) {
-      c.zoom(1.5);
-      return true;
+    _playback.pause();
+    if (c.placeAtPlayhead(id, overwrite: overwrite)) {
+      _playback.setMode(PreviewMode.program);
+      _playback.seekProgram(c.playhead.value);
+    } else {
+      _toast('Eklenemedi: giriş/çıkış aralığı geçersiz');
     }
-    if (key == LogicalKeyboardKey.minus || key == LogicalKeyboardKey.numpadSubtract) {
-      c.zoom(1 / 1.5);
-      return true;
+  }
+
+  void _removeRange({required bool ripple}) {
+    _playback.pause();
+    if (!c.removeMarkedRange(ripple: ripple)) {
+      _toast('Önce programda giriş (I) ve çıkış (O) noktası koy');
+    } else {
+      _playback.seekProgram(c.playhead.value);
     }
-    if (key == LogicalKeyboardKey.escape) {
-      c.clearSelection();
-      return true;
+  }
+
+  void _rippleTrim({required bool head}) {
+    _playback.pause();
+    if (!c.rippleTrimToPlayhead(head: head)) {
+      _toast('Oynatma kafasını bir klibin içine getir');
+    } else {
+      _playback.seekProgram(c.playhead.value);
     }
-    return false;
+  }
+
+  void _toggleSnap() {
+    c.toggleSnapping();
+    _toast(c.snapping ? 'Mıknatıs açık' : 'Mıknatıs kapalı');
+  }
+
+  void _splitAll() {
+    _playback.pause();
+    if (!c.splitAllAtPlayhead()) _toast('Oynatma kafasının altında klip yok');
+  }
+
+  void _copy() {
+    final n = c.copySelection();
+    _toast(n == 0 ? 'Kopyalanacak klip seçili değil' : '$n klip kopyalandı');
+  }
+
+  void _cut() {
+    _playback.pause();
+    final n = c.cutSelection();
+    _toast(n == 0 ? 'Kesilecek klip seçili değil' : '$n klip kesildi');
+  }
+
+  void _paste() {
+    _playback.pause();
+    final n = c.paste();
+    if (n == 0) _toast('Panoda klip yok');
+  }
+
+  void _duplicate() {
+    _playback.pause();
+    if (c.duplicateSelection() == 0) _toast('Çoğaltılacak klip seçili değil');
+  }
+
+  void _selectAll() {
+    if (c.focus == FocusArea.timeline || c.clips.isNotEmpty) c.selectAllClips();
+  }
+
+  Future<void> _saveNow() async {
+    await c.flushNow();
+    if (mounted) _toast('Proje kaydedildi');
+  }
+
+  void _clipMenu(String clipId) {
+    final count = c.selectedClipIds.length;
+    final label = count > 1 ? '$count klip' : 'Klip';
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        Widget item(IconData icon, String title, String keys, VoidCallback action, {bool danger = false}) =>
+            ListTile(
+              dense: true,
+              leading: Icon(icon, color: danger ? AppColors.danger : null),
+              title: Text(title),
+              trailing: Text(keys, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                action();
+              },
+            );
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+                  child: Text(label, style: Theme.of(context).textTheme.titleSmall),
+                ),
+                item(Icons.content_cut, 'Oynatma kafasından böl', 'Ctrl+B', _split),
+                item(Icons.copy, 'Kopyala', 'Ctrl+C', _copy),
+                item(Icons.cut_outlined, 'Kes', 'Ctrl+X', _cut),
+                item(Icons.content_paste, 'Yapıştır (oynatma kafasına)', 'Ctrl+V', _paste),
+                item(Icons.control_point_duplicate, 'Çoğalt', 'Ctrl+D', _duplicate),
+                item(Icons.select_all, 'Tümünü seç', 'Ctrl+A', _selectAll),
+                item(Icons.crop, 'Klibi giriş/çıkış olarak işaretle', 'X', _markClip),
+                item(Icons.delete_outline, 'Sil', 'Delete', () => _deleteSelection(), danger: true),
+                item(Icons.delete_sweep_outlined, 'Sil ve boşluğu kapat', 'Shift+Delete',
+                    () => _deleteSelection(ripple: true),
+                    danger: true),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showShortcuts() {
+    showDialog<void>(context: context, builder: (_) => const _ShortcutsDialog());
   }
 
   void _undo() {
@@ -172,13 +366,10 @@ class _WorkspacePageState extends State<WorkspacePage> {
     _addToTimeline(id);
   }
 
-  void _deleteSelection() {
+  void _deleteSelection({bool ripple = false}) {
     if (c.focus == FocusArea.timeline) {
-      final clip = c.selectedClipId;
-      if (clip != null) {
-        _playback.pause();
-        c.deleteClip(clip);
-      }
+      _playback.pause();
+      c.deleteSelectedClips(ripple: ripple);
       return;
     }
     final id = c.selectedId;
@@ -271,6 +462,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
                     onUndo: _undo,
                     onRedo: _redo,
                     onExit: _confirmExit,
+                    onShortcuts: _showShortcuts,
                   ),
                   Expanded(
                     child: Padding(
@@ -335,6 +527,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
         onSplit: _split,
         onDeleteClip: _deleteSelection,
         onDropMedia: (id, ms) => _addToTimeline(id, atMs: ms),
+        onClipMenu: _clipMenu,
+        viewportWidth: _timelineViewport,
       ),
     );
   }
@@ -347,7 +541,10 @@ class _TopBar extends StatelessWidget {
     required this.onUndo,
     required this.onRedo,
     required this.onExit,
+    required this.onShortcuts,
   });
+
+  final VoidCallback onShortcuts;
 
   final WorkspaceController controller;
   final VoidCallback onImport;
@@ -440,6 +637,11 @@ class _TopBar extends StatelessWidget {
               onPressed: c.importing ? null : onImport,
             ),
             ToolButton(
+              icon: Icons.keyboard_outlined,
+              tip: const TipData('Klavye kısayolları', 'Bütün kısayolların listesini açar.', shortcut: 'F1'),
+              onPressed: onShortcuts,
+            ),
+            ToolButton(
               icon: Icons.space_dashboard_outlined,
               tip: const TipData(
                 'Düzeni sıfırla',
@@ -482,6 +684,128 @@ class _SaveIndicator extends StatelessWidget {
           const SizedBox(width: 4),
           Text(text, style: TextStyle(fontSize: 11.5, color: color)),
         ],
+      ),
+    );
+  }
+}
+
+
+class _ShortcutsDialog extends StatelessWidget {
+  const _ShortcutsDialog();
+
+  static const List<(String, List<(String, String)>)> groups = [
+    ('Oynatma', [
+      ('Boşluk', 'Oynat / durdur'),
+      ('L', 'İleri oynat (tekrar: 2x, 4x, 8x)'),
+      ('J', 'Geri oynat (tekrar: hızlanır)'),
+      ('K', 'Durdur'),
+      ('← / →', 'Bir kare geri / ileri'),
+      ('Shift + ← / →', '1 saniye geri / ileri'),
+      ('↑ / ↓', 'Önceki / sonraki kesim noktası'),
+      ('Home / End', 'Başa / sona git'),
+      ('`', 'Kaynak ↔ Program monitörü'),
+    ]),
+    ('İşaretleme', [
+      ('I / O', 'Giriş / çıkış noktası'),
+      ('X', 'Klibi giriş-çıkış olarak işaretle'),
+      ('Alt + X', 'Giriş/çıkışı temizle'),
+      ('M', 'İşaretçi koy / kaldır'),
+      ('Shift + M', 'Sonraki işaretçi'),
+      ('Ctrl + M', 'Önceki işaretçi'),
+    ]),
+    ('Kurgu', [
+      ('E', 'Seçili dosyayı sona ekle'),
+      (',', 'Oynatma kafasına ekle (sağdakileri iter)'),
+      ('.', 'Oynatma kafasına üzerine yaz'),
+      ('Ctrl + B / Ctrl + K', 'Seçili klibi böl'),
+      ('Ctrl + Shift + K', 'Bütün kanalları böl'),
+      ('Q / W', 'Başı / sonu oynatma kafasına kırp (boşluk kapanır)'),
+      (';', 'Giriş-çıkış aralığını kaldır (boşluk kalır)'),
+      ("'", 'Giriş-çıkış aralığını çıkar (boşluk kapanır)'),
+      ('Delete', 'Seçiliyi sil'),
+      ('Shift + Delete', 'Sil ve boşluğu kapat'),
+      ('S', 'Mıknatıs aç / kapat'),
+    ]),
+    ('Düzen', [
+      ('Ctrl + C / X / V', 'Kopyala / kes / yapıştır'),
+      ('Ctrl + D', 'Çoğalt'),
+      ('Ctrl + A', 'Tümünü seç'),
+      ('Ctrl / Shift + dokun', 'Çoklu seçim'),
+      ('Ctrl + Z', 'Geri al'),
+      ('Ctrl + Y / Ctrl + Shift + Z', 'Yinele'),
+      ('Esc', 'Seçimi kaldır'),
+    ]),
+    ('Görünüm ve dosya', [
+      ('+ / -', 'Yakınlaştır / uzaklaştır'),
+      ('\\', 'Kurguyu ekrana sığdır'),
+      ('Ctrl + I', 'Medya içe aktar'),
+      ('Ctrl + S', 'Hemen kaydet'),
+      ('F1 veya /', 'Bu liste'),
+    ]),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.panel,
+      insetPadding: const EdgeInsets.all(28),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900, maxHeight: 640),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 8, 6),
+              child: Row(children: [
+                const Icon(Icons.keyboard_outlined, size: 18, color: AppColors.textSecondary),
+                const SizedBox(width: 8),
+                const Expanded(child: Text('Klavye kısayolları', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
+                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, size: 18)),
+              ]),
+            ),
+            const Divider(height: 1, color: AppColors.border),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(18),
+                child: Wrap(
+                  spacing: 28,
+                  runSpacing: 18,
+                  children: [
+                    for (final g in groups)
+                      SizedBox(
+                        width: 400,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(g.$1.toUpperCase(),
+                                style: const TextStyle(
+                                    fontSize: 11, letterSpacing: 0.8, color: AppColors.accent, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 6),
+                            for (final row in g.$2)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 3),
+                                child: Row(children: [
+                                  SizedBox(
+                                    width: 170,
+                                    child: Text(row.$1,
+                                        style: const TextStyle(
+                                            fontSize: 12.5, fontFamily: 'monospace', color: AppColors.textPrimary)),
+                                  ),
+                                  Expanded(
+                                    child: Text(row.$2,
+                                        style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+                                  ),
+                                ]),
+                              ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

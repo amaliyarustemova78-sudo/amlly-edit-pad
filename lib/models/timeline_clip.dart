@@ -35,6 +35,15 @@ class TimelineClip {
   int get endMs => startMs + durationMs;
   bool contains(int ms) => ms >= startMs && ms < endMs;
 
+  TimelineClip copyWith({required String id, int? startMs}) => TimelineClip(
+        id: id,
+        assetId: assetId,
+        track: track,
+        startMs: startMs ?? this.startMs,
+        inMs: inMs,
+        outMs: outMs,
+      );
+
   Map<String, Object?> toJson() => {
         'id': id,
         'assetId': assetId,

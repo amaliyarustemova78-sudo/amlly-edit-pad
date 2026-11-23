@@ -238,9 +238,21 @@ class _TransportBar extends StatelessWidget {
         builder: (context, pos, child) {
           final total = p.duration;
           final fps = 1000 / p.frameMs;
+          final sourceId = p.sourceAsset?.id;
+          final (int?, int?) marks = source
+              ? (sourceId == null ? (null, null) : controller.sourceMarks(sourceId))
+              : (controller.programIn, controller.programOut);
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (total > 0 && (marks.$1 != null || marks.$2 != null))
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+                  child: SizedBox(
+                    height: 4,
+                    child: CustomPaint(painter: _MarksPainter(total: total, inMs: marks.$1, outMs: marks.$2)),
+                  ),
+                ),
               SizedBox(
                 height: 26,
                 child: SliderTheme(
@@ -275,6 +287,18 @@ class _TransportBar extends StatelessWidget {
                     ),
                   ),
                   ToolButton(
+                    icon: Icons.login,
+                    tip: const TipData('Giriş noktası', 'Kullanılacak bölümün başını işaretler.', shortcut: 'I'),
+                    onPressed: () {
+                      final id = sourceId;
+                      if (source && id != null) {
+                        controller.setSourceIn(id, pos);
+                      } else if (!source) {
+                        controller.setProgramIn(pos);
+                      }
+                    },
+                  ),
+                  ToolButton(
                     icon: Icons.skip_previous,
                     tip: const TipData('Başa git', 'Oynatma kafasını en başa alır.', shortcut: 'Home'),
                     onPressed: p.toStart,
@@ -304,7 +328,29 @@ class _TransportBar extends StatelessWidget {
                     tip: const TipData('Sona git', 'Oynatma kafasını en sona alır.', shortcut: 'End'),
                     onPressed: p.toEnd,
                   ),
-                  const Expanded(child: SizedBox()),
+                  ToolButton(
+                    icon: Icons.logout,
+                    tip: const TipData('Çıkış noktası', 'Kullanılacak bölümün sonunu işaretler.', shortcut: 'O'),
+                    onPressed: () {
+                      final id = sourceId;
+                      if (source && id != null) {
+                        controller.setSourceOut(id, pos);
+                      } else if (!source) {
+                        controller.setProgramOut(pos);
+                      }
+                    },
+                  ),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: p.playing && p.rate != 1
+                          ? Text(
+                              '${p.rate < 0 ? '◀ ' : ''}${p.rate.abs().toStringAsFixed(0)}x${p.rate > 0 ? ' ▶' : ''}',
+                              style: const TextStyle(fontSize: 12, color: AppColors.warn, fontWeight: FontWeight.w600),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -337,4 +383,25 @@ class SafeAreaPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant SafeAreaPainter oldDelegate) => false;
+}
+
+class _MarksPainter extends CustomPainter {
+  const _MarksPainter({required this.total, this.inMs, this.outMs});
+
+  final int total;
+  final int? inMs;
+  final int? outMs;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final a = (inMs ?? 0) / total * size.width;
+    final b = (outMs ?? total) / total * size.width;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTRB(a, 0, b, size.height), const Radius.circular(2)),
+      Paint()..color = AppColors.accent,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _MarksPainter old) => old.total != total || old.inMs != inMs || old.outMs != outMs;
 }
