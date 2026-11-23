@@ -12,7 +12,10 @@ class InspectorPanel extends StatelessWidget {
     required this.controller,
     required this.onRemove,
     required this.onRelink,
+    required this.onAddToTimeline,
   });
+
+  final void Function(String id) onAddToTimeline;
 
   final WorkspaceController controller;
   final void Function(String id) onRemove;
@@ -20,7 +23,7 @@ class InspectorPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final asset = controller.selected;
+    final asset = controller.inspected;
     return Panel(
       title: 'Denetçi',
       icon: Icons.tune,
@@ -60,6 +63,13 @@ class InspectorPanel extends StatelessWidget {
             ),
           ],
         ),
+        if (controller.focus == FocusArea.timeline && controller.selectedClip != null)
+          _Section('Klip', [
+            _Row('Başlangıç', formatTimecode(controller.selectedClip!.startMs, fps: a.frameRate ?? 30)),
+            _Row('Süre', formatTimecode(controller.selectedClip!.durationMs, fps: a.frameRate ?? 30)),
+            _Row('Kaynak giriş', formatTimecode(controller.selectedClip!.inMs, fps: a.frameRate ?? 30)),
+            _Row('Kaynak çıkış', formatTimecode(controller.selectedClip!.outMs, fps: a.frameRate ?? 30)),
+          ]),
         _Section('Dosya', [
           _Row('Tür', mediaKindLabel(a.kind)),
           _Row('Boyut', formatBytes(a.sizeBytes)),
@@ -86,6 +96,12 @@ class InspectorPanel extends StatelessWidget {
             _Row('Kanal', formatChannels(a.channels)),
           ]),
         const SizedBox(height: 14),
+        FilledButton.tonalIcon(
+          onPressed: a.offline ? null : () => onAddToTimeline(a.id),
+          icon: const Icon(Icons.add_box_outlined, size: 16),
+          label: const Text('Zaman çizelgesine ekle'),
+        ),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(

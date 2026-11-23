@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../app/theme.dart';
 import '../app/version.dart';
+import '../state/playback_controller.dart';
 import '../state/workspace_controller.dart';
 import 'panels/inspector_panel.dart';
 import 'panels/media_panel.dart';
@@ -23,23 +24,185 @@ class WorkspacePage extends StatefulWidget {
 
 class _WorkspacePageState extends State<WorkspacePage> {
   late final AppLifecycleListener _lifecycle;
+  late final PlaybackController _playback;
 
   WorkspaceController get c => widget.controller;
 
   @override
   void initState() {
     super.initState();
+    _playback = PlaybackController(c);
     _lifecycle = AppLifecycleListener(
-      onHide: () => unawaited(c.flushNow()),
+      onHide: () {
+        _playback.pause();
+        unawaited(c.flushNow());
+      },
       onPause: () => unawaited(c.flushNow()),
       onResume: () => unawaited(c.recheckMedia()),
     );
+    HardwareKeyboard.instance.addHandler(_onKey);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _playback.seekProgram(c.playhead.value));
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKey);
     _lifecycle.dispose();
+    _playback.dispose();
     super.dispose();
+  }
+
+  /// Klavye kısayolları: odak nerede olursa olsun çalışır (dosya seçiciden dönünce de).
+  bool _onKey(KeyEvent event) {
+    if (event is KeyUpEvent) return false;
+    if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return false;
+    final key = event.logicalKey;
+    final kb = HardwareKeyboard.instance;
+    final ctrl = kb.isControlPressed || kb.isMetaPressed;
+    final shift = kb.isShiftPressed;
+    final repeat = event is KeyRepeatEvent;
+
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      shift ? _playback.jumpBy(-1000) : _playback.stepFrames(-1);
+      return true;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      shift ? _playback.jumpBy(1000) : _playback.stepFrames(1);
+      return true;
+    }
+    if (repeat) return false;
+
+    if (ctrl) {
+      if (key == LogicalKeyboardKey.keyZ) {
+        shift ? _redo() : _undo();
+        return true;
+      }
+      if (key == LogicalKeyboardKey.keyY) {
+        _redo();
+        return true;
+      }
+      if (key == LogicalKeyboardKey.keyB) {
+        _split();
+        return true;
+      }
+      if (key == LogicalKeyboardKey.keyI) {
+        _import();
+        return true;
+      }
+      return false;
+    }
+    if (key == LogicalKeyboardKey.space || key == LogicalKeyboardKey.keyK) {
+      _playback.togglePlay();
+      return true;
+    }
+    if (key == LogicalKeyboardKey.keyL) {
+      _playback.play();
+      return true;
+    }
+    if (key == LogicalKeyboardKey.keyJ) {
+      _playback.pause();
+      _playback.jumpBy(-2000);
+      return true;
+    }
+    if (key == LogicalKeyboardKey.home) {
+      _playback.toStart();
+      return true;
+    }
+    if (key == LogicalKeyboardKey.end) {
+      _playback.toEnd();
+      return true;
+    }
+    if (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace) {
+      _deleteSelection();
+      return true;
+    }
+    if (key == LogicalKeyboardKey.keyE) {
+      _addSelected();
+      return true;
+    }
+    if (key == LogicalKeyboardKey.equal || key == LogicalKeyboardKey.numpadAdd || key == LogicalKeyboardKey.add) {
+      c.zoom(1.5);
+      return true;
+    }
+    if (key == LogicalKeyboardKey.minus || key == LogicalKeyboardKey.numpadSubtract) {
+      c.zoom(1 / 1.5);
+      return true;
+    }
+    if (key == LogicalKeyboardKey.escape) {
+      c.clearSelection();
+      return true;
+    }
+    return false;
+  }
+
+  void _undo() {
+    _playback.pause();
+    if (!c.undo()) _toast('Geri alınacak işlem yok');
+  }
+
+  void _redo() {
+    _playback.pause();
+    if (!c.redo()) _toast('Yinelenecek işlem yok');
+  }
+
+  void _split() {
+    _playback.pause();
+    if (!c.splitAtPlayhead()) _toast('Bölmek için oynatma kafasını bir klibin üstüne getir');
+  }
+
+  void _addToTimeline(String id) {
+    if (c.addToTimeline(id)) {
+      final clip = c.selectedClip;
+      if (clip != null) {
+        _playback.setMode(PreviewMode.program);
+        _playback.seekProgram(clip.startMs);
+      }
+    } else {
+      _toast('Bu dosya eklenemedi (süresi okunamadı)');
+    }
+  }
+
+  void _addSelected() {
+    final id = c.selectedId;
+    if (id == null) {
+      _toast('Önce havuzdan bir dosya seç');
+      return;
+    }
+    _addToTimeline(id);
+  }
+
+  void _deleteSelection() {
+    if (c.focus == FocusArea.timeline) {
+      final clip = c.selectedClipId;
+      if (clip != null) {
+        _playback.pause();
+        c.deleteClip(clip);
+      }
+      return;
+    }
+    final id = c.selectedId;
+    if (id != null) _remove(id);
+  }
+
+  Future<void> _confirmExit() async {
+    _playback.pause();
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.raised,
+        title: const Text('Uygulamadan çıkılsın mı?', style: TextStyle(fontSize: 16)),
+        content: const Text('Projen otomatik kaydedildi; açtığında kaldığın yerden devam edersin.',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Vazgeç')),
+          FilledButton.tonal(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Çık')),
+        ],
+      ),
+    );
+    if (leave == true) {
+      await c.flushNow();
+      await SystemNavigator.pop();
+    }
   }
 
   void _toast(String text) {
@@ -78,11 +241,6 @@ class _WorkspacePageState extends State<WorkspacePage> {
     });
   }
 
-  void _removeSelected() {
-    final id = c.selectedId;
-    if (id != null) _remove(id);
-  }
-
   Future<void> _relink(String id) async {
     try {
       final ok = await c.relink(id);
@@ -94,23 +252,25 @@ class _WorkspacePageState extends State<WorkspacePage> {
 
   @override
   Widget build(BuildContext context) {
-    return CallbackShortcuts(
-      bindings: <ShortcutActivator, VoidCallback>{
-        const SingleActivator(LogicalKeyboardKey.keyI, control: true): _import,
-        const SingleActivator(LogicalKeyboardKey.delete): _removeSelected,
-        const SingleActivator(LogicalKeyboardKey.backspace): _removeSelected,
-        const SingleActivator(LogicalKeyboardKey.escape): () => c.select(null),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) unawaited(_confirmExit());
       },
-      child: Focus(
-        autofocus: true,
-        child: Scaffold(
+      child: Scaffold(
           body: SafeArea(
             child: ListenableBuilder(
               listenable: c,
               builder: (context, _) => Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _TopBar(controller: c, onImport: _import),
+                  _TopBar(
+                    controller: c,
+                    onImport: _import,
+                    onUndo: _undo,
+                    onRedo: _redo,
+                    onExit: _confirmExit,
+                  ),
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
@@ -122,7 +282,6 @@ class _WorkspacePageState extends State<WorkspacePage> {
             ),
           ),
         ),
-      ),
     );
   }
 
@@ -144,7 +303,13 @@ class _WorkspacePageState extends State<WorkspacePage> {
         minFirst: 200,
         minSecond: 420,
         onChanged: (v) => c.setLayoutValue('sol', v),
-        first: MediaPanel(controller: c, onImport: _import, onRemove: _remove, onRelink: _relink),
+        first: MediaPanel(
+          controller: c,
+          onImport: _import,
+          onRemove: _remove,
+          onRelink: _relink,
+          onAddToTimeline: _addToTimeline,
+        ),
         second: SplitPane(
           key: ValueKey('orta-$epoch'),
           axis: Axis.horizontal,
@@ -153,20 +318,40 @@ class _WorkspacePageState extends State<WorkspacePage> {
           minFirst: 260,
           minSecond: 200,
           onChanged: (v) => c.setLayoutValue('orta', v),
-          first: PreviewPanel(controller: c),
-          second: InspectorPanel(controller: c, onRemove: _remove, onRelink: _relink),
+          first: PreviewPanel(controller: c, playback: _playback),
+          second: InspectorPanel(
+            controller: c,
+            onRemove: _remove,
+            onRelink: _relink,
+            onAddToTimeline: _addToTimeline,
+          ),
         ),
       ),
-      second: TimelinePanel(controller: c),
+      second: TimelinePanel(
+        controller: c,
+        playback: _playback,
+        onAddSelected: _addSelected,
+        onSplit: _split,
+        onDeleteClip: _deleteSelection,
+      ),
     );
   }
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.controller, required this.onImport});
+  const _TopBar({
+    required this.controller,
+    required this.onImport,
+    required this.onUndo,
+    required this.onRedo,
+    required this.onExit,
+  });
 
   final WorkspaceController controller;
   final VoidCallback onImport;
+  final VoidCallback onUndo;
+  final VoidCallback onRedo;
+  final VoidCallback onExit;
 
   @override
   Widget build(BuildContext context) {
@@ -177,6 +362,12 @@ class _TopBar extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           children: [
+            ToolButton(
+              icon: Icons.arrow_back,
+              tip: const TipData('Çık', 'Uygulamadan çıkar. Proje otomatik kaydedilir.'),
+              onPressed: onExit,
+            ),
+            const SizedBox(width: 6),
             Container(
               width: 22,
               height: 22,
@@ -226,6 +417,17 @@ class _TopBar extends StatelessWidget {
                   ),
                 ),
               ),
+            ToolButton(
+              icon: Icons.undo,
+              tip: const TipData('Geri al', 'Zaman çizelgesindeki son işlemi geri alır.', shortcut: 'Ctrl+Z'),
+              onPressed: c.canUndo ? onUndo : null,
+            ),
+            ToolButton(
+              icon: Icons.redo,
+              tip: const TipData('Yinele', 'Geri alınan işlemi tekrar uygular.', shortcut: 'Ctrl+Y'),
+              onPressed: c.canRedo ? onRedo : null,
+            ),
+            const SizedBox(width: 8),
             ToolButton(
               icon: Icons.add_to_photos_outlined,
               tip: const TipData(

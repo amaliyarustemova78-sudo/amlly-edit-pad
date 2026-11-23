@@ -27,8 +27,10 @@ class MediaPanel extends StatefulWidget {
     required this.onImport,
     required this.onRemove,
     required this.onRelink,
+    required this.onAddToTimeline,
   });
 
+  final void Function(String id) onAddToTimeline;
   final WorkspaceController controller;
   final VoidCallback onImport;
   final void Function(String id) onRemove;
@@ -52,6 +54,15 @@ class _MediaPanelState extends State<MediaPanel> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.add_box_outlined),
+              title: const Text('Zaman çizelgesine ekle'),
+              subtitle: const Text('Çizelgenin sonuna yerleştirir'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                widget.onAddToTimeline(asset.id);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.link),
               title: const Text('Yeniden bağla'),
@@ -131,8 +142,9 @@ class _MediaPanelState extends State<MediaPanel> {
         return _MediaTile(
           asset: asset,
           thumbPath: c.thumbPathFor(asset),
-          selected: asset.id == c.selectedId,
+          selected: asset.id == c.selectedId && c.focus == FocusArea.media,
           onTap: () => c.select(asset.id),
+          onDoubleTap: () => widget.onAddToTimeline(asset.id),
           onMenu: () => _showActions(asset),
         );
       },
@@ -145,9 +157,10 @@ class _MediaPanelState extends State<MediaPanel> {
       itemCount: items.length,
       itemBuilder: (context, i) {
         final asset = items[i];
-        final selected = asset.id == c.selectedId;
+        final selected = asset.id == c.selectedId && c.focus == FocusArea.media;
         return GestureDetector(
           onTap: () => c.select(asset.id),
+          onDoubleTap: () => widget.onAddToTimeline(asset.id),
           onLongPress: () => _showActions(asset),
           onSecondaryTap: () => _showActions(asset),
           child: Container(
@@ -208,8 +221,11 @@ class _MediaTile extends StatelessWidget {
     required this.thumbPath,
     required this.selected,
     required this.onTap,
+    required this.onDoubleTap,
     required this.onMenu,
   });
+
+  final VoidCallback onDoubleTap;
 
   final MediaAsset asset;
   final String thumbPath;
@@ -224,6 +240,7 @@ class _MediaTile extends StatelessWidget {
         : (asset.offline ? AppColors.danger : AppColors.border);
     return GestureDetector(
       onTap: onTap,
+      onDoubleTap: onDoubleTap,
       onLongPress: onMenu,
       onSecondaryTap: onMenu,
       child: AnimatedContainer(

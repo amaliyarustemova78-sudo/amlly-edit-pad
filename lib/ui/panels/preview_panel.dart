@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../app/theme.dart';
 import '../../core/format.dart';
 import '../../models/media_asset.dart';
+import '../../state/playback_controller.dart';
 import '../../state/workspace_controller.dart';
 import '../widgets/common.dart';
 
@@ -16,110 +18,180 @@ const List<(String, String)> kAspectOptions = [
 ];
 
 class PreviewPanel extends StatelessWidget {
-  const PreviewPanel({super.key, required this.controller});
+  const PreviewPanel({super.key, required this.controller, required this.playback});
 
   final WorkspaceController controller;
+  final PlaybackController playback;
 
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    final asset = c.selected;
-    final aspect = parseAspect(c.project.aspect);
-    return Panel(
-      title: 'Önizleme',
-      icon: Icons.monitor_outlined,
-      actions: [
-        PopupMenuButton<String>(
-          tooltip: 'En-boy oranı',
-          initialValue: c.project.aspect,
-          onSelected: c.setAspect,
-          color: AppColors.raised,
-          itemBuilder: (context) => [
-            for (final option in kAspectOptions)
-              PopupMenuItem<String>(
-                value: option.$1,
-                child: Text('${option.$1}   ${option.$2}', style: const TextStyle(fontSize: 13)),
-              ),
-          ],
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.aspect_ratio, size: 16, color: AppColors.textSecondary),
-                const SizedBox(width: 4),
-                Text(c.project.aspect, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-              ],
+    final p = playback;
+    return ListenableBuilder(
+      listenable: p,
+      builder: (context, _) {
+        final source = p.mode == PreviewMode.source;
+        return Panel(
+          title: 'Önizleme',
+          icon: Icons.monitor_outlined,
+          subtitle: source ? 'Kaynak' : 'Program',
+          actions: [
+            ToolButton(
+              size: 30,
+              icon: Icons.video_file_outlined,
+              active: source,
+              tip: const TipData('Kaynak monitörü', 'Havuzda seçili dosyayı tek başına izler.'),
+              onPressed: () => p.setMode(PreviewMode.source),
             ),
-          ),
-        ),
-        ToolButton(
-          size: 30,
-          icon: Icons.crop_free,
-          active: c.project.showSafeArea,
-          tip: const TipData(
-            'Güvenli alan kılavuzu',
-            'Yazıların kırpılmaması için %90 hareket ve %80 yazı güvenli alanını gösterir.',
-          ),
-          onPressed: c.toggleSafeArea,
-        ),
-      ],
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Center(
-                child: AspectRatio(
-                  aspectRatio: aspect,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        if (asset != null && asset.hasPicture && !asset.offline)
-                          MediaThumb(asset: asset, path: c.thumbPathFor(asset), fit: BoxFit.contain, iconSize: 40)
-                        else
-                          _PreviewPlaceholder(asset: asset),
-                        if (c.project.showSafeArea) const CustomPaint(painter: SafeAreaPainter()),
-                      ],
+            ToolButton(
+              size: 30,
+              icon: Icons.view_timeline_outlined,
+              active: !source,
+              tip: const TipData('Program monitörü', 'Zaman çizelgesindeki kurguyu oynatır.'),
+              onPressed: () => p.setMode(PreviewMode.program),
+            ),
+            const SizedBox(width: 4),
+            PopupMenuButton<String>(
+              tooltip: 'En-boy oranı',
+              initialValue: c.project.aspect,
+              onSelected: c.setAspect,
+              color: AppColors.raised,
+              itemBuilder: (context) => [
+                for (final option in kAspectOptions)
+                  PopupMenuItem<String>(
+                    value: option.$1,
+                    child: Text('${option.$1}   ${option.$2}', style: const TextStyle(fontSize: 13)),
+                  ),
+              ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.aspect_ratio, size: 16, color: AppColors.textSecondary),
+                    const SizedBox(width: 4),
+                    Text(c.project.aspect, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+            ),
+            ToolButton(
+              size: 30,
+              icon: Icons.crop_free,
+              active: c.project.showSafeArea,
+              tip: const TipData(
+                'Güvenli alan kılavuzu',
+                'Yazıların kırpılmaması için %90 hareket ve %80 yazı güvenli alanını gösterir.',
+              ),
+              onPressed: c.toggleSafeArea,
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: p.togglePlay,
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: parseAspect(c.project.aspect),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(color: Colors.black, border: Border.all(color: AppColors.border)),
+                          child: ClipRect(
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                source ? _sourceView() : _programView(),
+                                if (c.project.showSafeArea)
+                                  const IgnorePointer(child: CustomPaint(painter: SafeAreaPainter())),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
+              _TransportBar(playback: p, controller: c),
+            ],
           ),
-          _TransportBar(asset: asset),
-        ],
-      ),
+        );
+      },
+    );
+  }
+
+  Widget _sourceView() {
+    final asset = playback.sourceAsset;
+    if (asset == null) {
+      return const _Hint(icon: Icons.smart_display_outlined, text: 'İzlemek için havuzdan bir dosya seç');
+    }
+    if (asset.offline) return const _Hint(icon: Icons.link_off, text: 'Medyaya ulaşılamıyor');
+    final video = playback.sourceVideo;
+    if (asset.kind == MediaKind.image) {
+      return MediaThumb(asset: asset, path: controller.thumbPathFor(asset), fit: BoxFit.contain, iconSize: 40);
+    }
+    if (asset.kind == MediaKind.audio) {
+      return _Hint(icon: Icons.graphic_eq, text: asset.name);
+    }
+    if (video == null) {
+      return Stack(fit: StackFit.expand, children: [
+        MediaThumb(asset: asset, path: controller.thumbPathFor(asset), fit: BoxFit.contain, iconSize: 40),
+        const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
+      ]);
+    }
+    return _VideoView(controller: video);
+  }
+
+  Widget _programView() {
+    if (controller.clips.isEmpty) {
+      return const _Hint(
+        icon: Icons.view_timeline_outlined,
+        text: 'Zaman çizelgesi boş.\nHavuzdaki bir dosyaya çift dokun ya da ⊕ ile ekle.',
+      );
+    }
+    return ValueListenableBuilder<int>(
+      valueListenable: controller.playhead,
+      builder: (context, value, child) {
+        final clip = playback.programClip;
+        if (clip == null) return const SizedBox.expand();
+        final asset = controller.assetById(clip.assetId);
+        if (asset == null) return const SizedBox.expand();
+        if (asset.offline) return const _Hint(icon: Icons.link_off, text: 'Medyaya ulaşılamıyor');
+        final video = playback.programVideo;
+        if (asset.kind == MediaKind.image || video == null) {
+          return MediaThumb(asset: asset, path: controller.thumbPathFor(asset), fit: BoxFit.contain, iconSize: 40);
+        }
+        return _VideoView(controller: video);
+      },
     );
   }
 }
 
-class _PreviewPlaceholder extends StatelessWidget {
-  const _PreviewPlaceholder({required this.asset});
+class _VideoView extends StatelessWidget {
+  const _VideoView({required this.controller});
 
-  final MediaAsset? asset;
+  final VideoPlayerController controller;
 
   @override
   Widget build(BuildContext context) {
-    final a = asset;
-    IconData icon;
-    String text;
-    if (a == null) {
-      icon = Icons.smart_display_outlined;
-      text = 'Önizlemek için medya seç';
-    } else if (a.offline) {
-      icon = Icons.link_off;
-      text = 'Medyaya ulaşılamıyor';
-    } else {
-      icon = Icons.graphic_eq;
-      text = a.name;
-    }
+    final ratio = controller.value.isInitialized && controller.value.aspectRatio > 0
+        ? controller.value.aspectRatio
+        : 16 / 9;
+    return Center(child: AspectRatio(aspectRatio: ratio, child: VideoPlayer(controller)));
+  }
+}
+
+class _Hint extends StatelessWidget {
+  const _Hint({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -130,7 +202,7 @@ class _PreviewPlaceholder extends StatelessWidget {
             const SizedBox(height: 8),
             Text(text,
                 textAlign: TextAlign.center,
-                maxLines: 2,
+                maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           ],
@@ -141,37 +213,96 @@ class _PreviewPlaceholder extends StatelessWidget {
 }
 
 class _TransportBar extends StatelessWidget {
-  const _TransportBar({required this.asset});
+  const _TransportBar({required this.playback, required this.controller});
 
-  final MediaAsset? asset;
+  final PlaybackController playback;
+  final WorkspaceController controller;
 
   @override
   Widget build(BuildContext context) {
-    final a = asset;
-    final fps = a?.frameRate ?? 30;
-    final total = a?.durationMs;
-    const soon = 'Oynatma v0.2 sürümünde gelecek.';
+    final p = playback;
+    final source = p.mode == PreviewMode.source;
+    final ValueNotifier<int> listenable = source ? p.sourcePosition : controller.playhead;
     return Container(
-      height: 42,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
       decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              total == null
-                  ? formatTimecode(0, fps: fps)
-                  : '${formatTimecode(0, fps: fps)}  /  ${formatTimecode(total, fps: fps)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontFamily: 'monospace'),
-            ),
-          ),
-          const ToolButton(icon: Icons.skip_previous, tip: TipData('Başa git', soon, shortcut: 'Home')),
-          const ToolButton(icon: Icons.play_arrow, tip: TipData('Oynat / Durdur', soon, shortcut: 'Boşluk')),
-          const ToolButton(icon: Icons.skip_next, tip: TipData('Sona git', soon, shortcut: 'End')),
-          const Expanded(child: SizedBox()),
-        ],
+      child: ValueListenableBuilder<int>(
+        valueListenable: listenable,
+        builder: (context, pos, child) {
+          final total = p.duration;
+          final fps = 1000 / p.frameMs;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: 26,
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 2,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                    activeTrackColor: AppColors.accent,
+                    inactiveTrackColor: AppColors.border,
+                    thumbColor: AppColors.playhead,
+                  ),
+                  child: Slider(
+                    value: total <= 0 ? 0 : pos.clamp(0, total).toDouble(),
+                    max: total <= 0 ? 1 : total.toDouble(),
+                    onChanged: total <= 0
+                        ? null
+                        : (v) {
+                            p.pause();
+                            p.seek(v.round());
+                          },
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${formatTimecode(pos, fps: fps)}  /  ${formatTimecode(total, fps: fps)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontFamily: 'monospace'),
+                    ),
+                  ),
+                  ToolButton(
+                    icon: Icons.skip_previous,
+                    tip: const TipData('Başa git', 'Oynatma kafasını en başa alır.', shortcut: 'Home'),
+                    onPressed: p.toStart,
+                  ),
+                  ToolButton(
+                    icon: Icons.chevron_left,
+                    tip: const TipData('Bir kare geri', 'Tek kare geri gider. Shift ile 1 saniye.', shortcut: '←'),
+                    onPressed: () => p.stepFrames(-1),
+                  ),
+                  ToolButton(
+                    icon: p.playing ? Icons.pause : Icons.play_arrow,
+                    active: p.playing,
+                    tip: const TipData(
+                      'Oynat / Durdur',
+                      'Önizlemeyi oynatır ya da durdurur. Görüntüye dokunmak da aynı işi yapar.',
+                      shortcut: 'Boşluk',
+                    ),
+                    onPressed: p.togglePlay,
+                  ),
+                  ToolButton(
+                    icon: Icons.chevron_right,
+                    tip: const TipData('Bir kare ileri', 'Tek kare ileri gider. Shift ile 1 saniye.', shortcut: '→'),
+                    onPressed: () => p.stepFrames(1),
+                  ),
+                  ToolButton(
+                    icon: Icons.skip_next,
+                    tip: const TipData('Sona git', 'Oynatma kafasını en sona alır.', shortcut: 'End'),
+                    onPressed: p.toEnd,
+                  ),
+                  const Expanded(child: SizedBox()),
+                ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -8,9 +9,13 @@ import 'package:flutter/painting.dart';
 import '../core/native_media.dart';
 import '../models/media_asset.dart';
 import '../models/project_doc.dart';
+import '../models/timeline_clip.dart';
 import '../services/project_store.dart';
 
 enum SaveState { saved, pending, saving, failed }
+
+/// Klavye kısayollarının (ör. Delete) hangi bölgeye uygulanacağını belirler.
+enum FocusArea { media, timeline }
 
 class ImportReport {
   const ImportReport({this.added = 0, this.duplicates = 0, this.failed = 0});
@@ -21,15 +26,21 @@ class ImportReport {
 }
 
 class RemovedMedia {
-  RemovedMedia(this.asset, this.index);
+  RemovedMedia(this.asset, this.index, this.clips);
 
   final MediaAsset asset;
   final int index;
+  final List<TimelineClip> clips;
 }
 
 /// Çalışma alanının tek durum kaynağı: medya havuzu, seçim, düzen ve otomatik kayıt.
 class WorkspaceController extends ChangeNotifier {
-  WorkspaceController._(this._store, this._doc);
+  WorkspaceController._(this._store, this._doc) : playhead = ValueNotifier<int>(_doc.playheadMs) {
+    _doc.clips.removeWhere((c) => !_doc.media.any((m) => m.id == c.assetId) || c.durationMs <= 0);
+  }
+
+  /// Oynatma kafası ayrı bildirilir; böylece oynatırken bütün ekran yeniden çizilmez.
+  final ValueNotifier<int> playhead;
 
   static Future<WorkspaceController> open() async {
     final root = await NativeMedia.appDirectory();
@@ -46,6 +57,12 @@ class WorkspaceController extends ChangeNotifier {
   final math.Random _random = math.Random();
 
   String? _selectedId;
+  String? _selectedClipId;
+  FocusArea _focus = FocusArea.media;
+  final List<String> _undo = <String>[];
+  final List<String> _redo = <String>[];
+  int _dragMin = 0;
+  int? _dragMax;
   bool _importing = false;
   int _importTotal = 0;
   int _importDone = 0;
@@ -62,6 +79,35 @@ class WorkspaceController extends ChangeNotifier {
   MediaAsset? get selected {
     final id = _selectedId;
     return id == null ? null : _find(id);
+  }
+
+  FocusArea get focus => _focus;
+  List<TimelineClip> get clips => List.unmodifiable(_doc.clips);
+  String? get selectedClipId => _selectedClipId;
+  TimelineClip? get selectedClip {
+    final id = _selectedClipId;
+    return id == null ? null : clipById(id);
+  }
+
+  bool get canUndo => _undo.isNotEmpty;
+  bool get canRedo => _redo.isNotEmpty;
+  double get pxPerSecond => _doc.pxPerSecond;
+
+  int get timelineEndMs {
+    var end = 0;
+    for (final c in _doc.clips) {
+      if (c.endMs > end) end = c.endMs;
+    }
+    return end;
+  }
+
+  /// Denetçide gösterilecek medya: zaman çizelgesi odaklıysa seçili klibin medyası.
+  MediaAsset? get inspected {
+    if (_focus == FocusArea.timeline) {
+      final clip = selectedClip;
+      if (clip != null) return assetById(clip.assetId);
+    }
+    return selected;
   }
 
   bool get importing => _importing;
@@ -101,9 +147,193 @@ class WorkspaceController extends ChangeNotifier {
   // ---------------- Seçim ----------------
 
   void select(String? id) {
-    if (_selectedId == id) return;
+    if (_selectedId == id && _focus == FocusArea.media) return;
     _selectedId = id;
+    _focus = FocusArea.media;
     _notify();
+  }
+
+  void selectClip(String? id) {
+    _selectedClipId = id;
+    _focus = FocusArea.timeline;
+    _notify();
+  }
+
+  void clearSelection() {
+    _selectedId = null;
+    _selectedClipId = null;
+    _notify();
+  }
+
+  // ---------------- Zaman çizelgesi ----------------
+
+  MediaAsset? assetById(String id) => _find(id);
+
+  TimelineClip? clipById(String id) {
+    for (final c in _doc.clips) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  /// Belirtilen kanalda [ms] anını kapsayan klip (üst üste binerse sonuncusu).
+  TimelineClip? clipAt(int track, int ms) {
+    TimelineClip? found;
+    for (final c in _doc.clips) {
+      if (c.track == track && c.contains(ms)) found = c;
+    }
+    return found;
+  }
+
+  int trackEnd(int track) {
+    var end = 0;
+    for (final c in _doc.clips) {
+      if (c.track == track && c.endMs > end) end = c.endMs;
+    }
+    return end;
+  }
+
+  bool addToTimeline(String assetId) {
+    final asset = _find(assetId);
+    if (asset == null) return false;
+    final track = asset.kind == MediaKind.audio ? TimelineClip.audioTrack : TimelineClip.videoTrack;
+    final length = asset.kind == MediaKind.image ? 5000 : (asset.durationMs ?? 0);
+    if (length <= 0) return false;
+    _record();
+    final clip = TimelineClip(
+      id: 'k${_newId()}',
+      assetId: asset.id,
+      track: track,
+      startMs: trackEnd(track),
+      inMs: 0,
+      outMs: length,
+    );
+    _doc.clips.add(clip);
+    _selectedClipId = clip.id;
+    _focus = FocusArea.timeline;
+    _changed();
+    return true;
+  }
+
+  void deleteClip(String id) {
+    final index = _doc.clips.indexWhere((c) => c.id == id);
+    if (index < 0) return;
+    _record();
+    _doc.clips.removeAt(index);
+    if (_selectedClipId == id) _selectedClipId = null;
+    _changed();
+  }
+
+  /// Oynatma kafasındaki klibi ikiye böler (önce seçili klip denenir).
+  bool splitAtPlayhead() {
+    final ms = playhead.value;
+    TimelineClip? target;
+    final sel = selectedClip;
+    if (sel != null && ms > sel.startMs && ms < sel.endMs) {
+      target = sel;
+    } else {
+      target = clipAt(TimelineClip.videoTrack, ms) ?? clipAt(TimelineClip.audioTrack, ms);
+    }
+    if (target == null || ms - target.startMs < 40 || target.endMs - ms < 40) return false;
+    _record();
+    final cut = target.inMs + (ms - target.startMs);
+    final second = TimelineClip(
+      id: 'k${_newId()}',
+      assetId: target.assetId,
+      track: target.track,
+      startMs: ms,
+      inMs: cut,
+      outMs: target.outMs,
+    );
+    target.outMs = cut;
+    _doc.clips.insert(_doc.clips.indexOf(target) + 1, second);
+    _selectedClipId = second.id;
+    _focus = FocusArea.timeline;
+    _changed();
+    return true;
+  }
+
+  void beginMove(String id) {
+    final clip = clipById(id);
+    if (clip == null) return;
+    _record();
+    _dragMin = 0;
+    _dragMax = null;
+    for (final other in _doc.clips) {
+      if (identical(other, clip) || other.track != clip.track) continue;
+      if (other.startMs < clip.startMs) {
+        if (other.endMs > _dragMin) _dragMin = other.endMs;
+      } else {
+        final limit = other.startMs - clip.durationMs;
+        if (_dragMax == null || limit < _dragMax!) _dragMax = limit;
+      }
+    }
+    if (_dragMax != null && _dragMax! < _dragMin) _dragMax = _dragMin;
+  }
+
+  void updateMove(String id, int newStart) {
+    final clip = clipById(id);
+    if (clip == null) return;
+    var start = math.max(_dragMin, newStart);
+    final max = _dragMax;
+    if (max != null) start = math.min(max, start);
+    if (start == clip.startMs) return;
+    clip.startMs = start;
+    _notify();
+  }
+
+  void endMove() => _changed();
+
+  void setPlayhead(int ms) {
+    final value = math.max(0, ms);
+    _doc.playheadMs = value;
+    playhead.value = value;
+  }
+
+  void persistPlayhead() => _scheduleSave();
+
+  void zoom(double factor) {
+    final next = (_doc.pxPerSecond * factor).clamp(4.0, 400.0).toDouble();
+    if (next == _doc.pxPerSecond) return;
+    _doc.pxPerSecond = next;
+    _changed();
+  }
+
+  // ---------------- Geri al / yinele ----------------
+
+  String _snapshot() => jsonEncode([for (final c in _doc.clips) c.toJson()]);
+
+  void _record() {
+    _undo.add(_snapshot());
+    if (_undo.length > 100) _undo.removeAt(0);
+    _redo.clear();
+  }
+
+  void _restore(String snapshot) {
+    final decoded = jsonDecode(snapshot) as List;
+    _doc.clips
+      ..clear()
+      ..addAll([
+        for (final item in decoded) TimelineClip.fromJson((item as Map).cast<String, Object?>()),
+      ]);
+    _doc.clips.removeWhere((c) => _find(c.assetId) == null);
+    if (_selectedClipId != null && clipById(_selectedClipId!) == null) _selectedClipId = null;
+  }
+
+  bool undo() {
+    if (_undo.isEmpty) return false;
+    _redo.add(_snapshot());
+    _restore(_undo.removeLast());
+    _changed();
+    return true;
+  }
+
+  bool redo() {
+    if (_redo.isEmpty) return false;
+    _undo.add(_snapshot());
+    _restore(_redo.removeLast());
+    _changed();
+    return true;
   }
 
   // ---------------- Medya havuzu ----------------
@@ -177,16 +407,21 @@ class WorkspaceController extends ChangeNotifier {
     final index = _doc.media.indexWhere((m) => m.id == id);
     if (index < 0) return null;
     final asset = _doc.media.removeAt(index);
+    final removedClips = _doc.clips.where((c) => c.assetId == id).toList();
+    _doc.clips.removeWhere((c) => c.assetId == id);
     if (_selectedId == id) _selectedId = null;
+    if (_selectedClipId != null && clipById(_selectedClipId!) == null) _selectedClipId = null;
     _changed();
-    return RemovedMedia(asset, index);
+    return RemovedMedia(asset, index, removedClips);
   }
 
   void undoRemove(RemovedMedia removed) {
     if (_doc.media.any((m) => m.id == removed.asset.id)) return;
     final index = math.min(removed.index, _doc.media.length);
     _doc.media.insert(index, removed.asset);
+    _doc.clips.addAll(removed.clips);
     _selectedId = removed.asset.id;
+    _focus = FocusArea.media;
     _changed();
   }
 
@@ -347,6 +582,7 @@ class WorkspaceController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _saveTimer?.cancel();
+    playhead.dispose();
     super.dispose();
   }
 }

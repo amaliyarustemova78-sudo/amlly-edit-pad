@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:amlly_edit_pad/core/format.dart';
 import 'package:amlly_edit_pad/models/media_asset.dart';
 import 'package:amlly_edit_pad/models/project_doc.dart';
+import 'package:amlly_edit_pad/models/timeline_clip.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -47,6 +48,7 @@ void main() {
         frameRate: 29.97,
         rotation: 90,
       ));
+      doc.clips.add(TimelineClip(id: 'k1', assetId: 'a1', track: 0, startMs: 1000, inMs: 500, outMs: 4500));
       doc.layout['sol'] = 0.3;
       doc.aspect = '9:16';
       final back = ProjectDoc.fromJson(jsonDecode(jsonEncode(doc.toJson())) as Map<String, Object?>);
@@ -54,6 +56,9 @@ void main() {
       expect(back.media.single.frameRate, 29.97);
       expect(back.layout['sol'], 0.3);
       expect(back.aspect, '9:16');
+      expect(back.clips.single.endMs, 5000);
+      expect(back.clips.single.contains(4999), isTrue);
+      expect(back.clips.single.contains(5000), isFalse);
     });
 
     test('bozuk medya kaydı atlanır', () {

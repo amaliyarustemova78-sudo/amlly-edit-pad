@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -193,7 +194,7 @@ class SplitPane extends StatefulWidget {
 }
 
 class _SplitPaneState extends State<SplitPane> {
-  static const double _handle = 10;
+  static const double _handle = 22;
   late double _fraction = widget.initialFraction.clamp(0.05, 0.95).toDouble();
   bool _active = false;
 
@@ -223,8 +224,8 @@ class _SplitPaneState extends State<SplitPane> {
 
       final grip = AnimatedContainer(
         duration: const Duration(milliseconds: 120),
-        width: horizontal ? (_active ? 3 : 2) : 40,
-        height: horizontal ? 40 : (_active ? 3 : 2),
+        width: horizontal ? (_active ? 5 : 3) : 56,
+        height: horizontal ? 56 : (_active ? 5 : 3),
         decoration: BoxDecoration(
           color: _active ? AppColors.accent : AppColors.handle,
           borderRadius: BorderRadius.circular(2),
@@ -243,6 +244,7 @@ class _SplitPaneState extends State<SplitPane> {
           onVerticalDragUpdate: horizontal ? null : (d) => update(d.delta.dy),
           onVerticalDragEnd: horizontal ? null : (_) => _finish(),
           onVerticalDragCancel: horizontal ? null : () => setState(() => _active = false),
+          dragStartBehavior: DragStartBehavior.down,
           onDoubleTap: () {
             setState(() => _fraction = widget.defaultFraction);
             widget.onChanged?.call(_fraction);

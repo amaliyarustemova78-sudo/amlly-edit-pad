@@ -1,21 +1,15 @@
-## AmllyEdit Pad v0.1.0: Temel
-
-Bu sürüm, uygulamanın gerçek temelidir. Önceki sürüm yalnızca görsel bir maketti; bu sürüm tablette gerçek dosyalarla çalışır.
+## AmllyEdit Pad v0.2.0: Oynatma ve zaman çizelgesi
 
 **Yenilikler**
-- Medya içe aktarma: video, ses ve fotoğraf. Dosyalar kopyalanmaz; tabletteki yerlerinden kalıcı izinle bağlanır.
-- Gerçek medya analizi: süre, çözünürlük, kare hızı, codec, döndürme, bit hızı, ses örnekleme ve kanal bilgisi.
-- Medya havuzu: ızgara ve liste görünümü, küçük resimler ve süre etiketleri.
-- Eksik medya tespiti ve "Yeniden bağla".
-- Boyutlandırılabilir paneller: medya, önizleme, denetçi ve zaman çizelgesi. Ayırıcıya çift dokunmak o ayırıcıyı sıfırlar.
-- Önizleme: en-boy oranı seçimi (16:9, 9:16, 1:1, 4:5, 3:4, 21:9) ve güvenli alan kılavuzu.
-- Otomatik kayıt: her değişiklik tablete kaydedilir ve bir önceki kayıt yedeklenir.
-- Türkçe bilgi kartları: bir düğmeye uzun basınca ne işe yaradığı ve kısayolu görünür.
-- Klavye kısayolları: Ctrl+I içe aktar, Delete kaldır, Esc seçimi temizle.
+- **Gerçek oynatma:** Havuzda bir dosyaya dokununca *Kaynak* monitöründe oynar. Zaman çizelgesindeki kurgu *Program* monitöründe oynar. Görüntüye dokunmak oynatır ya da durdurur.
+- **Zaman çizelgesi:** Havuzdaki bir dosyaya çift dokun (ya da ⊕) ve dosya çizelgenin sonuna eklenir. Video ve fotoğraflar V1'e, sesler A1'e gider.
+- **Klip düzenleme:** Klibi parmakla sağa sola sürükleyerek taşı. **Böl** (✂, Ctrl+B) ile oynatma kafasından ikiye ayır. Seçili klibi çöp kutusuyla ya da Delete tuşuyla sil.
+- **Geri al / yinele:** Üst çubuktaki oklar ya da Ctrl+Z / Ctrl+Y.
+- **Gezinme:** Cetvele dokunarak ya da cetveli sürükleyerek konuma git. Kare kare ilerle, yakınlaştır ve uzaklaştır.
+- **Düzeltmeler:** Delete ve diğer kısayollar artık her zaman çalışıyor. Panel ayırıcıları parmakla tutulacak kadar genişletildi. Geri tuşu artık uygulamayı soru sormadan kapatmıyor, önce onay istiyor. Sol üstte bir çıkış düğmesi de var.
 
-**Kurulum**
-1. Aşağıdaki `AmllyEditPad-v0.1.0.apk` dosyasını indir.
-2. Tabletteki eski AmllyEdit Pad'i bir kez kaldır (eski sürüm farklı bir anahtarla imzalıydı). Bundan sonraki güncellemeler üstüne kurulur.
-3. İndirilen APK'yı aç ve kur.
+**Klavye:** Boşluk/K oynat-durdur · L oynat · J 2 sn geri · ←/→ bir kare (Shift ile 1 sn) · Home/End · Ctrl+B böl · Delete sil · E ekle · Ctrl+Z/Y · +/- yakınlaştır · Esc seçimi kaldır
 
-**Sıradaki sürüm (v0.2):** Önizlemede gerçek oynatma, klipleri zaman çizelgesine yerleştirme, yakınlaştırma.
+**Kurulum:** APK'yı indirip aç. Mevcut sürümün üstüne kurulur, silmene gerek yok.
+
+**Sıradaki sürüm (v0.3):** Klip kenarlarından kırpma, mıknatıs (yapıştırma), boşluk kapatma (ripple), çoklu kanal.

@@ -1,4 +1,5 @@
 import 'media_asset.dart';
+import 'timeline_clip.dart';
 
 class ProjectDoc {
   ProjectDoc({
@@ -8,10 +9,13 @@ class ProjectDoc {
     required this.updatedAt,
     required this.media,
     required this.layout,
+    List<TimelineClip>? clips,
+    this.playheadMs = 0,
+    this.pxPerSecond = 40,
     this.aspect = '16:9',
     this.showSafeArea = false,
     this.revision = 0,
-  });
+  }) : clips = clips ?? <TimelineClip>[];
 
   factory ProjectDoc.empty() {
     final now = DateTime.now();
@@ -38,6 +42,16 @@ class ProjectDoc {
         }
       }
     }
+    final clips = <TimelineClip>[];
+    final rawClips = j['clips'];
+    if (rawClips is List) {
+      for (final item in rawClips) {
+        if (item is! Map) continue;
+        try {
+          clips.add(TimelineClip.fromJson(item.cast<String, Object?>()));
+        } catch (_) {}
+      }
+    }
     final layout = <String, double>{};
     final rawLayout = j['layout'];
     if (rawLayout is Map) {
@@ -52,13 +66,16 @@ class ProjectDoc {
       updatedAt: DateTime.tryParse((j['updatedAt'] as String?) ?? '') ?? DateTime.now(),
       media: media,
       layout: layout,
+      clips: clips,
+      playheadMs: (j['playheadMs'] as num?)?.toInt() ?? 0,
+      pxPerSecond: (j['pxPerSecond'] as num?)?.toDouble() ?? 40,
       aspect: (j['aspect'] as String?) ?? '16:9',
       showSafeArea: (j['showSafeArea'] as bool?) ?? false,
       revision: (j['revision'] as num?)?.toInt() ?? 0,
     );
   }
 
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
 
   final String id;
   String name;
@@ -66,6 +83,9 @@ class ProjectDoc {
   DateTime updatedAt;
   final List<MediaAsset> media;
   final Map<String, double> layout;
+  final List<TimelineClip> clips;
+  int playheadMs;
+  double pxPerSecond;
   String aspect;
   bool showSafeArea;
   int revision;
@@ -81,5 +101,8 @@ class ProjectDoc {
         'revision': revision,
         'layout': layout,
         'media': [for (final m in media) m.toJson()],
+        'playheadMs': playheadMs,
+        'pxPerSecond': pxPerSecond,
+        'clips': [for (final c in clips) c.toJson()],
       };
 }
